@@ -1,49 +1,42 @@
-import { useEffect } from "react";
-import "@/App.css";
+import "@/index.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
-
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
-
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
-
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
-
-  return (
-    <div>
-      <header className="App-header">
-        <a
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
-  );
-};
+import { Toaster } from "sonner";
+import Landing from "@/pages/Landing";
+import AppLayout from "@/components/AppLayout";
+import Dashboard from "@/pages/Dashboard";
+import KOLWatchlist from "@/pages/KOLWatchlist";
+import Trending from "@/pages/Trending";
+import TokenDetail from "@/pages/TokenDetail";
+import Portfolio from "@/pages/Portfolio";
+import SettingsPage from "@/pages/Settings";
 
 function App() {
   return (
-    <div className="App">
+    <div className="App font-display bg-[#050505] text-white min-h-screen">
       <BrowserRouter>
+        <Toaster
+          theme="dark"
+          position="bottom-right"
+          toastOptions={{
+            style: {
+              background: "#0A0A0D",
+              border: "1px solid #1A1A24",
+              color: "#fff",
+              fontFamily: "JetBrains Mono, monospace",
+              fontSize: "12px",
+              borderRadius: "2px",
+            },
+          }}
+        />
         <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
+          <Route path="/" element={<Landing />} />
+          <Route path="/app" element={<AppLayout />}>
+            <Route index element={<Dashboard />} />
+            <Route path="kol" element={<KOLWatchlist />} />
+            <Route path="trending" element={<Trending />} />
+            <Route path="token/:addr" element={<TokenDetail />} />
+            <Route path="portfolio" element={<Portfolio />} />
+            <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

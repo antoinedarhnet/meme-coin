@@ -1,115 +1,259 @@
+@import url("https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@400,500,700,800,900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg-base: #050505;
+  --bg-surface: #0a0a0d;
+  --bg-panel: #0d0d12;
+  --bg-hover: #14141a;
+  --border-default: #1a1a24;
+  --border-focus: #00e5ff;
+  --neon-green: #00ff66;
+  --neon-red: #ff3366;
+  --neon-cyan: #00e5ff;
+  --neon-violet: #b026ff;
+  --neon-yellow: #ffd600;
+  --text-primary: #ffffff;
+  --text-secondary: #8a8a9e;
+  --text-muted: #5c5c6e;
+}
+
+@layer base {
+  :root {
+    --background: 240 6% 4%;
+    --foreground: 0 0% 100%;
+    --card: 240 8% 6%;
+    --card-foreground: 0 0% 100%;
+    --popover: 240 8% 6%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 145 100% 50%;
+    --primary-foreground: 0 0% 0%;
+    --secondary: 240 8% 10%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 240 8% 10%;
+    --muted-foreground: 240 5% 60%;
+    --accent: 195 100% 50%;
+    --accent-foreground: 0 0% 0%;
+    --destructive: 348 100% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 12% 12%;
+    --input: 240 12% 12%;
+    --ring: 195 100% 50%;
+    --radius: 0.125rem;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  border-color: hsl(var(--border));
+}
+
+html,
+body,
+#root {
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: "Cabinet Grotesk", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  margin: 0;
+}
+
 body {
-    margin: 0;
-    font-family:
-        -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-        "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-        sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(176, 38, 255, 0.08) 0%, transparent 45%),
+    radial-gradient(circle at 80% 100%, rgba(0, 229, 255, 0.06) 0%, transparent 50%),
+    var(--bg-base);
+  min-height: 100vh;
 }
 
-code {
-    font-family:
-        source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
+.font-mono {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+.font-display {
+  font-family: "Cabinet Grotesk", system-ui, sans-serif;
 }
 
-@layer base {
-    :root {
-        --background: 0 0% 100%;
-        --foreground: 0 0% 3.9%;
-        --card: 0 0% 100%;
-        --card-foreground: 0 0% 3.9%;
-        --popover: 0 0% 100%;
-        --popover-foreground: 0 0% 3.9%;
-        --primary: 0 0% 9%;
-        --primary-foreground: 0 0% 98%;
-        --secondary: 0 0% 96.1%;
-        --secondary-foreground: 0 0% 9%;
-        --muted: 0 0% 96.1%;
-        --muted-foreground: 0 0% 45.1%;
-        --accent: 0 0% 96.1%;
-        --accent-foreground: 0 0% 9%;
-        --destructive: 0 84.2% 60.2%;
-        --destructive-foreground: 0 0% 98%;
-        --border: 0 0% 89.8%;
-        --input: 0 0% 89.8%;
-        --ring: 0 0% 3.9%;
-        --chart-1: 12 76% 61%;
-        --chart-2: 173 58% 39%;
-        --chart-3: 197 37% 24%;
-        --chart-4: 43 74% 66%;
-        --chart-5: 27 87% 67%;
-        --radius: 0.5rem;
-    }
-    .dark {
-        --background: 0 0% 3.9%;
-        --foreground: 0 0% 98%;
-        --card: 0 0% 3.9%;
-        --card-foreground: 0 0% 98%;
-        --popover: 0 0% 3.9%;
-        --popover-foreground: 0 0% 98%;
-        --primary: 0 0% 98%;
-        --primary-foreground: 0 0% 9%;
-        --secondary: 0 0% 14.9%;
-        --secondary-foreground: 0 0% 98%;
-        --muted: 0 0% 14.9%;
-        --muted-foreground: 0 0% 63.9%;
-        --accent: 0 0% 14.9%;
-        --accent-foreground: 0 0% 98%;
-        --destructive: 0 62.8% 30.6%;
-        --destructive-foreground: 0 0% 98%;
-        --border: 0 0% 14.9%;
-        --input: 0 0% 14.9%;
-        --ring: 0 0% 83.1%;
-        --chart-1: 220 70% 50%;
-        --chart-2: 160 60% 45%;
-        --chart-3: 30 80% 55%;
-        --chart-4: 280 65% 60%;
-        --chart-5: 340 75% 55%;
-    }
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-base);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 0;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--neon-cyan);
 }
 
-@layer base {
-    * {
-        @apply border-border;
-    }
-    body {
-        @apply bg-background text-foreground;
-    }
+::selection {
+  background: var(--neon-green);
+  color: black;
 }
 
-@layer base {
-    [data-debug-wrapper="true"] {
-        display: contents !important;
-    }
+/* Grid background pattern */
+.bg-grid {
+  background-image:
+    linear-gradient(to right, rgba(26, 26, 36, 0.4) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(26, 26, 36, 0.4) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
 
-    [data-debug-wrapper="true"] > * {
-        margin-left: inherit;
-        margin-right: inherit;
-        margin-top: inherit;
-        margin-bottom: inherit;
-        padding-left: inherit;
-        padding-right: inherit;
-        padding-top: inherit;
-        padding-bottom: inherit;
-        column-gap: inherit;
-        row-gap: inherit;
-        gap: inherit;
-        border-left-width: inherit;
-        border-right-width: inherit;
-        border-top-width: inherit;
-        border-bottom-width: inherit;
-        border-left-style: inherit;
-        border-right-style: inherit;
-        border-top-style: inherit;
-        border-bottom-style: inherit;
-        border-left-color: inherit;
-        border-right-color: inherit;
-        border-top-color: inherit;
-        border-bottom-color: inherit;
-    }
+.bg-grid-sm {
+  background-image:
+    linear-gradient(to right, rgba(26, 26, 36, 0.3) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(26, 26, 36, 0.3) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+.scanline::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.02) 0px,
+    rgba(255, 255, 255, 0.02) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  pointer-events: none;
+}
+
+.glow-green {
+  text-shadow: 0 0 8px rgba(0, 255, 102, 0.6);
+}
+.glow-red {
+  text-shadow: 0 0 8px rgba(255, 51, 102, 0.6);
+}
+.glow-cyan {
+  text-shadow: 0 0 8px rgba(0, 229, 255, 0.6);
+}
+.glow-violet {
+  text-shadow: 0 0 8px rgba(176, 38, 255, 0.7);
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.85);
+  }
+}
+.animate-pulse-dot {
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+@keyframes flash-green {
+  0% {
+    background: rgba(0, 255, 102, 0.25);
+  }
+  100% {
+    background: transparent;
+  }
+}
+@keyframes flash-red {
+  0% {
+    background: rgba(255, 51, 102, 0.25);
+  }
+  100% {
+    background: transparent;
+  }
+}
+.flash-green {
+  animation: flash-green 800ms ease-out;
+}
+.flash-red {
+  animation: flash-red 800ms ease-out;
+}
+
+@keyframes marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+.animate-marquee {
+  animation: marquee 90s linear infinite;
+}
+
+@keyframes glitch {
+  0%,
+  100% {
+    transform: translate(0);
+  }
+  20% {
+    transform: translate(-1px, 1px);
+  }
+  40% {
+    transform: translate(-1px, -1px);
+  }
+  60% {
+    transform: translate(1px, 1px);
+  }
+  80% {
+    transform: translate(1px, -1px);
+  }
+}
+.animate-glitch {
+  animation: glitch 0.4s linear infinite;
+}
+
+.terminal-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: 2px;
+}
+
+.btn-neon-green {
+  background: var(--neon-green);
+  color: #000;
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.75rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--neon-green);
+  transition: all 150ms;
+  box-shadow: 0 0 0 rgba(0, 255, 102, 0);
+}
+.btn-neon-green:hover {
+  box-shadow: 0 0 20px rgba(0, 255, 102, 0.5);
+  background: #00cc52;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-primary);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border-default);
+  transition: all 150ms;
+}
+.btn-ghost:hover {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+input,
+select,
+textarea {
+  font-family: "JetBrains Mono", monospace;
 }
