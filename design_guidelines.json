@@ -1,0 +1,137 @@
+{
+  "project_name": "Solana Pro Trading Terminal",
+  "theme": "dark",
+  "archetype": "Archetype 7 (Electric & Neon) + Archetype 4 (Swiss/High-Contrast)",
+  "aesthetic_concept": "Tactical Terminal: A dense, Bloomberg-inspired crypto trading dashboard. Deep obsidian backgrounds with strict 1px grid borders. Neon accents are used strictly as functional indicators (Green = Profit/Safe, Red = Danger/Rug, Violet = AI Score, Cyan = Cross-Call Signal). No soft purple gradients or generic AI-slop aesthetics. High-speed, high-density, pro-trader vibe.",
+  "colors": {
+    "background": {
+      "base": "#050505",
+      "surface": "#0A0A0D",
+      "surface_hover": "#14141A",
+      "panel": "#0D0D12"
+    },
+    "border": {
+      "default": "#1A1A24",
+      "focus": "#00E5FF",
+      "active": "#00FF66"
+    },
+    "text": {
+      "primary": "#FFFFFF",
+      "secondary": "#8A8A9E",
+      "muted": "#5C5C6E",
+      "inverse": "#000000"
+    },
+    "accents": {
+      "neon_green": "#00FF66",
+      "neon_red": "#FF3366",
+      "neon_cyan": "#00E5FF",
+      "neon_violet": "#B026FF",
+      "warning_yellow": "#FFD600"
+    },
+    "risk_levels": {
+      "safe": "bg-[#00FF66]/10 text-[#00FF66] border-[#00FF66]/20",
+      "risky": "bg-[#FFD600]/10 text-[#FFD600] border-[#FFD600]/20",
+      "danger": "bg-[#FF3366]/10 text-[#FF3366] border-[#FF3366]/20",
+      "rug": "bg-black text-[#FF3366] border-[#FF3366] outline-dashed outline-1"
+    }
+  },
+  "typography": {
+    "primary_font": "Cabinet Grotesk",
+    "primary_font_usage": "Marketing headers, page titles, big numbers.",
+    "mono_font": "JetBrains Mono",
+    "mono_font_usage": "All data tables, tickers, scores, wallet addresses, and timestamps. (Crucial for the terminal look)",
+    "scale": {
+      "h1": "text-5xl tracking-tighter uppercase font-bold",
+      "h2": "text-3xl tracking-tight",
+      "h3": "text-xl tracking-tight",
+      "data_large": "text-lg font-mono",
+      "data_base": "text-sm font-mono",
+      "data_small": "text-xs font-mono uppercase tracking-wider"
+    }
+  },
+  "layout_and_spacing": {
+    "general": "Dense and compact for the terminal (Dashboard, Portfolio). Generous spacing for the Marketing/Landing page.",
+    "dashboard_grid": "Full-width flex or CSS Grid. Use h-screen where possible to create an app-like terminal that doesn't scroll the body but scrolls internal panels.",
+    "panel_style": "Cardless design. Use 1px solid borders (#1A1A24) to separate panels. No rounded corners (rounded-none) or maximum rounded-sm to maintain the tactical, strict aesthetic."
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-[#00FF66] text-black font-mono uppercase text-sm font-bold tracking-widest hover:bg-[#00FF66]/80 transition-colors shadow-[0_0_15px_rgba(0,255,102,0.3)]",
+      "secondary": "bg-transparent border border-[#1A1A24] text-white hover:border-[#00E5FF] hover:text-[#00E5FF] font-mono text-sm",
+      "danger": "bg-[#FF3366]/10 border border-[#FF3366]/50 text-[#FF3366] hover:bg-[#FF3366] hover:text-black font-mono text-sm"
+    },
+    "data_tables": {
+      "header": "sticky top-0 bg-[#0A0A0D] border-b border-[#1A1A24] text-[#8A8A9E] font-mono text-xs uppercase py-2 px-4",
+      "row": "border-b border-[#1A1A24] hover:bg-[#14141A] transition-colors cursor-pointer group",
+      "cell": "py-1.5 px-4 font-mono text-sm align-middle whitespace-nowrap"
+    },
+    "score_ring": "SVG circle with stroke-dasharray based on the 0-100 score. Color maps to AI Violet (#B026FF) for high scores.",
+    "live_ticker": "Scrolling marquee (using react-fast-marquee) at the top or bottom of the screen showing top gainers. Font: JetBrains Mono text-xs, colors glowing based on positive/negative.",
+    "badges": "Square edges, 1px border, stark contrast. e.g. <span className='border border-[#00E5FF] text-[#00E5FF] px-2 py-0.5 text-[10px] font-mono uppercase'>AI Signal</span>"
+  },
+  "pages": [
+    {
+      "name": "Landing",
+      "layout": "High-impact hero. Deep black background with neon abstract data grid. Massive Cabinet Grotesk header. Mockup of the terminal in the center with a glowing 1px border. Feature bento box below.",
+      "key_elements": ["Hero CTA", "Live mocked ticker", "Feature Bento"]
+    },
+    {
+      "name": "Dashboard Live",
+      "layout": "3-column Terminal view. Left: Watchlist & Alerts. Center: Live Token Feed Table (Updates every second). Right: Quick Action/Snipe Panel & Mini Chart.",
+      "key_elements": ["Live Data Table", "Token Score (0-100)", "1-Click Snipe Button"]
+    },
+    {
+      "name": "X Watchlist (KOL Surveillance)",
+      "layout": "Grid of KOL profile cards showing win rate, ROI, and recent calls. A 'Cross-Call' priority feed on the side showing tokens mentioned by multiple KOLs.",
+      "key_elements": ["KOL ROI Badges", "Cross-Call Radar Panel", "Twitter Feed Integration"]
+    },
+    {
+      "name": "Trending & Narratives",
+      "layout": "Bento layout categorizing trending metas (e.g., AI Agents, Memes, PolitiFi). Heatmaps based on volume and X mentions.",
+      "key_elements": ["Narrative Heatmap", "Volume Velocity Sparks"]
+    },
+    {
+      "name": "Token Detail",
+      "layout": "Pro layout. Top: Token info, Risk Badges, AI Score breakdown. Left: Big Chart Embed. Right: Order book / Trade history. Bottom: Holder distribution (Bubble map mock).",
+      "key_elements": ["Rug Status Badge", "Buy/Sell Execution Form", "Holder % Progress bars"]
+    },
+    {
+      "name": "Portfolio (Paper Trading)",
+      "layout": "Split view. Top: P&L equity curve chart. Bottom: Table of open positions with real-time unrealized P&L.",
+      "key_elements": ["Total P&L metrics", "Position Table"]
+    },
+    {
+      "name": "Settings",
+      "layout": "Two-column layout. Left: Navigation (General, Alerts, Wallets). Right: Configuration forms (Slippage, Gas fee presets, RPC endpoints).",
+      "key_elements": ["RPC Latency Indicator", "Alert threshold inputs"]
+    }
+  ],
+  "motion": {
+    "general": "Minimalist and snappy. No bouncy animations. Use rapid fade-ins (duration 150ms) for new table rows. Numbers should flash green/red on change.",
+    "flash_update": "When a price or metric updates, temporarily flash the background of the table cell green or red, then fade back to transparent over 500ms."
+  },
+  "media": {
+    "hero_background": {
+      "url": "https://images.unsplash.com/photo-1746470427586-66ed7b83a502?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzB8MHwxfHNlYXJjaHwyfHxjeWJlcnB1bmslMjBkYXRhJTIwZ3JpZHxlbnwwfHx8fDE3Nzc0OTQ0NjJ8MA&ixlib=rb-4.1.0&q=85",
+      "category": "hero",
+      "description": "Green light abstract geometric data pattern, used for the main landing page hero background with a dark overlay."
+    },
+    "terminal_texture": {
+      "url": "https://images.unsplash.com/photo-1768330187404-59e46cf222c9?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzB8MHwxfHNlYXJjaHwxfHxjeWJlcnB1bmslMjBkYXRhJTIwZ3JpZHxlbnwwfHx8fDE3Nzc0OTQ0NjJ8MA&ixlib=rb-4.1.0&q=85",
+      "category": "background",
+      "description": "Abstract blue/cyan grid pattern with glowing lines for subtle terminal panel backgrounds."
+    },
+    "solana_logo": {
+      "url": "https://images.unsplash.com/photo-1642403711710-aa4709d39298?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1NzZ8MHwxfHNlYXJjaHw0fHxzb2xhbmElMjBjcnlwdG8lMjBkYXJrfGVufDB8fHx8MTc3NzQ5NDQ1MHww&ixlib=rb-4.1.0&q=85",
+      "category": "icon",
+      "description": "Dark aesthetic crypto coin imagery for token placeholder visuals."
+    }
+  },
+  "libraries": [
+    "lucide-react (for standard icons)",
+    "recharts (for P&L and trend charts)",
+    "react-fast-marquee (for live ticker)",
+    "clsx / tailwind-merge (for dynamic risk coloring)"
+  ],
+  "testing_attributes": "Ensure ALL buttons, navigation links, and key metric cells have descriptive data-testid attributes (e.g., data-testid='snipe-button-tokenX', data-testid='live-feed-row-1')."
+}
