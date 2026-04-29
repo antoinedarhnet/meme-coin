@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { fmtAge, fmtPct, fmtUsd, shorten } from "@/lib/format";
 import ScoreRing from "@/components/ScoreRing";
@@ -23,6 +23,7 @@ const RISK_FILTERS = [
 ];
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [tokens, setTokens] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sort, setSort] = useState("score");
@@ -68,7 +69,11 @@ export default function Dashboard() {
     );
   }, [tokens, q]);
 
-  const quickSnipe = async (t) => {
+  const quickSnipe = async (e, t) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
     try {
       await api.buy({
         token_address: t.address,
@@ -218,8 +223,9 @@ export default function Dashboard() {
             {filtered.map((t, i) => (
               <tr
                 key={t.address}
-                className="border-b border-[#1A1A24]/60 hover:bg-[#14141A] group"
+                className="border-b border-[#1A1A24]/60 hover:bg-[#14141A] group cursor-pointer"
                 data-testid={`token-row-${i}`}
+                onClick={() => navigate(`/app/token/${t.address}`)}
               >
                 <td className="px-3 py-2 text-[#5C5C6E]">{i + 1}</td>
                 <td className="px-2">
@@ -274,7 +280,7 @@ export default function Dashboard() {
                 </td>
                 <td className="px-3 text-right">
                   <button
-                    onClick={() => quickSnipe(t)}
+                    onClick={(e) => quickSnipe(e, t)}
                     data-testid={`quick-snipe-${t.symbol}`}
                     className="opacity-60 group-hover:opacity-100 px-2 py-1 border border-neon-green text-neon-green hover:bg-neon-green hover:text-black text-[10px] uppercase tracking-widest flex items-center gap-1 ml-auto"
                   >

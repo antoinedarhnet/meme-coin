@@ -36,6 +36,7 @@ export default function Ticker() {
 
   return (
     <div className="relative overflow-hidden border-y border-[#1A1A24] bg-surface h-9 flex items-center" data-testid="ticker-strip">
+      <div data-testid="ticker-marquee" className="contents"></div>
       <div className="absolute left-0 top-0 bottom-0 z-10 px-3 flex items-center bg-black border-r border-[#1A1A24]">
         <span className="font-mono text-[10px] uppercase tracking-widest text-neon-green flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 bg-neon-green rounded-full animate-pulse-dot inline-block" />

@@ -102,7 +102,7 @@ export default function KOLWatchlist() {
               <div
                 key={k.id}
                 className="p-3 hover:bg-[#14141A] group relative"
-                data-testid={`kol-card-${k.handle}`}
+                data-testid={`kol-row-${k.handle}`}
               >
                 <div className="flex items-start gap-3">
                   <div className="w-10 h-10 bg-[#1A1A24] border border-[#1A1A24] flex items-center justify-center font-mono text-sm text-white">
