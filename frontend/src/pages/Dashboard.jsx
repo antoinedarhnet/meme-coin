@@ -25,6 +25,7 @@ const RISK_FILTERS = [
 export default function Dashboard() {
   const navigate = useNavigate();
   const [tokens, setTokens] = useState([]);
+  const [holdings, setHoldings] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [sort, setSort] = useState("score");
   const [riskFilter, setRiskFilter] = useState("");
@@ -35,14 +36,18 @@ export default function Dashboard() {
 
   const load = async () => {
     try {
-      const r = await api.liveTokens({
-        sort,
-        risk: riskFilter || undefined,
-        min_liq: minLiq,
-        min_score: minScore,
-        limit: 80,
-      });
+      const [r, p] = await Promise.all([
+        api.liveTokens({
+          sort,
+          risk: riskFilter || undefined,
+          min_liq: minLiq,
+          min_score: minScore,
+          limit: 80,
+        }),
+        api.positions({ status: "open" }),
+      ]);
       setTokens(r.tokens || []);
+      setHoldings(new Set((p.positions || []).map((x) => x.token_address)));
       setLastRefresh(Date.now());
     } catch (e) {
       toast.error("Stream interrupted");
@@ -247,7 +252,18 @@ export default function Dashboard() {
                       </div>
                     )}
                     <div className="leading-tight">
-                      <div className="text-white">${t.symbol}</div>
+                      <div className="text-white flex items-center gap-1.5">
+                        ${t.symbol}
+                        {holdings.has(t.address) && (
+                          <span
+                            className="px-1 py-0 border border-neon-green text-neon-green font-mono text-[8px] uppercase tracking-widest glow-green"
+                            data-testid={`holding-badge-${t.symbol}`}
+                            title="You hold an open position"
+                          >
+                            ● HOLDING
+                          </span>
+                        )}
+                      </div>
                       <div className="text-[#5C5C6E] text-[10px] truncate max-w-[140px]">{t.name}</div>
                     </div>
                   </Link>

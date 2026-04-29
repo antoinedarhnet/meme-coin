@@ -4,20 +4,25 @@ import { api } from "@/lib/api";
 import { fmtPct, fmtUsd, fmtAge, shorten } from "@/lib/format";
 import ScoreRing from "@/components/ScoreRing";
 import RiskBadge from "@/components/RiskBadge";
-import { ArrowLeft, Copy, ExternalLink, Zap, TrendingUp, TrendingDown } from "lucide-react";
+import { ArrowLeft, Copy, ExternalLink, Zap, TrendingUp, TrendingDown, Target, DollarSign } from "lucide-react";
 import { toast } from "sonner";
 
 export default function TokenDetail() {
   const { addr } = useParams();
   const [data, setData] = useState(null);
+  const [positions, setPositions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [amount, setAmount] = useState(0.5);
   const [slippage, setSlippage] = useState(30);
 
   const load = async () => {
     try {
-      const d = await api.tokenDetail(addr);
+      const [d, p] = await Promise.all([
+        api.tokenDetail(addr),
+        api.positions({ token_address: addr }),
+      ]);
       setData(d);
+      setPositions(p.positions || []);
     } catch (e) {
       toast.error("Token fetch failed");
     } finally {
@@ -46,8 +51,25 @@ export default function TokenDetail() {
         slippage: Number(slippage),
       });
       toast.success(`Sniped ${amount} SOL of $${data.token.symbol}`);
+      load();
     } catch (e) {
       toast.error("Snipe failed");
+    }
+  };
+
+  const sellPosition = async (pos) => {
+    if (!data?.token?.price_usd) {
+      toast.error("Live price unavailable");
+      return;
+    }
+    try {
+      await api.close({ position_id: pos.id, exit_price_usd: data.token.price_usd });
+      toast.success(`SOLD $${pos.symbol}`, {
+        description: `Closed ${pos.amount_sol} SOL position`,
+      });
+      load();
+    } catch (e) {
+      toast.error("Sell failed");
     }
   };
 
@@ -133,6 +155,146 @@ export default function TokenDetail() {
         </div>
       </div>
 
+      {/* Positions panel - show user's trades on this token */}
+      {positions.length > 0 && (
+        <div className="terminal-panel" data-testid="my-trades-panel">
+          <div className="px-3 py-2 border-b border-[#1A1A24] font-mono text-[11px] uppercase tracking-widest flex items-center gap-2">
+            <Target className="w-3.5 h-3.5 text-neon-green" />
+            <span className="text-neon-green glow-green">MY TRADES ON THIS TOKEN</span>
+            <span className="ml-auto text-[#5C5C6E]">{positions.filter((p) => p.status === "open").length} OPEN · {positions.filter((p) => p.status === "closed").length} CLOSED</span>
+          </div>
+          <div className="divide-y divide-[#1A1A24]">
+            {positions.map((p) => {
+              const currentPrice = t.price_usd || 0;
+              const isOpen = p.status === "open";
+              const livePnlPct = isOpen
+                ? ((currentPrice - p.entry_price) / p.entry_price) * 100
+                : p.pnl_pct;
+              const liveProfit = (livePnlPct || 0) >= 0;
+              const finalPnlPct = isOpen ? livePnlPct : p.pnl_pct;
+              const finalPnlSol = isOpen
+                ? p.amount_sol * ((livePnlPct || 0) / 100)
+                : p.pnl_sol;
+              return (
+                <div
+                  key={p.id}
+                  className="p-3 hover:bg-[#14141A]"
+                  data-testid={`my-position-${p.id}`}
+                >
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+                    {/* Status */}
+                    <div className="md:col-span-2 flex items-center gap-2">
+                      <span
+                        className={`px-1.5 py-0.5 border font-mono text-[10px] uppercase tracking-widest ${
+                          isOpen
+                            ? "border-neon-cyan text-neon-cyan"
+                            : "border-[#1A1A24] text-[#8A8A9E]"
+                        }`}
+                      >
+                        {isOpen ? "● OPEN" : "CLOSED"}
+                      </span>
+                      <span className="font-mono text-[10px] text-[#5C5C6E]">
+                        {new Date(p.opened_at).toLocaleString(undefined, {
+                          month: "short",
+                          day: "2-digit",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </div>
+
+                    {/* Entry marker */}
+                    <div className="md:col-span-3">
+                      <div className="font-mono text-[10px] uppercase tracking-widest text-[#5C5C6E]">
+                        ▶ ENTRY
+                      </div>
+                      <div className="font-mono text-sm text-white">
+                        {fmtUsd(p.entry_price, { compact: false })}
+                      </div>
+                      <div className="font-mono text-[10px] text-[#5C5C6E]">
+                        {p.amount_sol} SOL · {p.tokens?.toLocaleString(undefined, { maximumFractionDigits: 0 })} tk
+                      </div>
+                    </div>
+
+                    {/* Current / exit price */}
+                    <div className="md:col-span-3">
+                      <div className="font-mono text-[10px] uppercase tracking-widest text-[#5C5C6E]">
+                        {isOpen ? "◆ NOW" : "✕ EXIT"}
+                      </div>
+                      <div className="font-mono text-sm text-white">
+                        {fmtUsd(isOpen ? currentPrice : p.exit_price, { compact: false })}
+                      </div>
+                      {isOpen && (
+                        <div className="font-mono text-[10px] text-neon-cyan">
+                          live · auto-refresh
+                        </div>
+                      )}
+                    </div>
+
+                    {/* PnL */}
+                    <div className="md:col-span-2">
+                      <div
+                        className={`font-mono text-lg font-bold ${
+                          liveProfit ? "text-neon-green glow-green" : "text-neon-red glow-red"
+                        }`}
+                      >
+                        {fmtPct(finalPnlPct)}
+                      </div>
+                      <div
+                        className={`font-mono text-[10px] ${
+                          liveProfit ? "text-neon-green" : "text-neon-red"
+                        }`}
+                      >
+                        {(finalPnlSol || 0).toFixed(3)} SOL
+                      </div>
+                    </div>
+
+                    {/* Action */}
+                    <div className="md:col-span-2 flex justify-end">
+                      {isOpen ? (
+                        <button
+                          onClick={() => sellPosition(p)}
+                          data-testid={`sell-position-${p.id}`}
+                          className="px-4 py-2 border border-neon-red text-neon-red hover:bg-neon-red hover:text-black font-mono text-xs uppercase tracking-widest font-bold flex items-center gap-1.5 transition-colors"
+                        >
+                          <DollarSign className="w-3 h-3" /> SELL
+                        </button>
+                      ) : (
+                        <span className="font-mono text-[10px] uppercase tracking-widest text-[#5C5C6E]">
+                          SETTLED
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Visual entry-to-current bar (only for open) */}
+                  {isOpen && currentPrice > 0 && (
+                    <div className="mt-3 relative h-6 bg-black border border-[#1A1A24]">
+                      <div className="absolute inset-y-0 left-0 flex items-center px-2 font-mono text-[9px] uppercase tracking-widest text-[#5C5C6E] z-10">
+                        ENTRY
+                      </div>
+                      <div className="absolute inset-y-0 right-0 flex items-center px-2 font-mono text-[9px] uppercase tracking-widest text-[#5C5C6E] z-10">
+                        NOW
+                      </div>
+                      <div
+                        className={`absolute inset-y-0 left-0 ${
+                          liveProfit ? "bg-neon-green/20" : "bg-neon-red/20"
+                        }`}
+                        style={{
+                          width: `${Math.min(100, Math.max(5, 50 + (livePnlPct || 0) / 4))}%`,
+                          borderRight: `2px solid ${liveProfit ? "#00FF66" : "#FF3366"}`,
+                          boxShadow: `0 0 8px ${liveProfit ? "#00FF66" : "#FF3366"}`,
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="grid lg:grid-cols-3 gap-3">
         {/* Chart */}
         <div className="lg:col-span-2 terminal-panel">
@@ -140,6 +302,31 @@ export default function TokenDetail() {
             <span>Live Chart</span>
             <span className="ml-auto text-[#5C5C6E]">DexScreener Embed</span>
           </div>
+          {/* Entry markers strip above chart */}
+          {positions.filter((p) => p.status === "open").length > 0 && (
+            <div className="border-b border-[#1A1A24] bg-black px-3 py-1.5 flex items-center gap-2 flex-wrap" data-testid="entry-markers-strip">
+              <span className="font-mono text-[9px] uppercase tracking-widest text-[#5C5C6E]">
+                ▶ YOUR ENTRIES:
+              </span>
+              {positions
+                .filter((p) => p.status === "open")
+                .map((p) => {
+                  const inProfit = (t.price_usd || 0) >= p.entry_price;
+                  return (
+                    <span
+                      key={p.id}
+                      className={`font-mono text-[10px] px-1.5 py-0.5 border ${
+                        inProfit
+                          ? "border-neon-green text-neon-green"
+                          : "border-neon-red text-neon-red"
+                      }`}
+                    >
+                      {fmtUsd(p.entry_price, { compact: false })} · {p.amount_sol} SOL
+                    </span>
+                  );
+                })}
+            </div>
+          )}
           <div className="aspect-video bg-black">
             {t.pair_address ? (
               <iframe

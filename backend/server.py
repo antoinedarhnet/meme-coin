@@ -622,8 +622,13 @@ async def get_narratives():
 
 # ---------- Paper Trading ----------
 @api_router.get("/portfolio/positions")
-async def list_positions():
-    items = await db.positions.find({}, {"_id": 0}).to_list(500)
+async def list_positions(token_address: Optional[str] = Query(None), status: Optional[str] = Query(None)):
+    q: Dict[str, Any] = {}
+    if token_address:
+        q["token_address"] = token_address
+    if status:
+        q["status"] = status
+    items = await db.positions.find(q, {"_id": 0}).to_list(500)
     items.sort(key=lambda p: p.get("opened_at", ""), reverse=True)
     return {"positions": items}
 

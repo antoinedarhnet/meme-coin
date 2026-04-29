@@ -14,7 +14,7 @@ export const api = {
   removeKol: (id) => http.delete(`/kols/${id}`).then((r) => r.data),
   kolCalls: () => http.get("/kols/calls").then((r) => r.data),
   narratives: () => http.get("/narratives").then((r) => r.data),
-  positions: () => http.get("/portfolio/positions").then((r) => r.data),
+  positions: (params = {}) => http.get("/portfolio/positions", { params }).then((r) => r.data),
   buy: (payload) => http.post("/portfolio/buy", payload).then((r) => r.data),
   close: (payload) => http.post("/portfolio/close", payload).then((r) => r.data),
   stats: () => http.get("/portfolio/stats").then((r) => r.data),
