@@ -1,20 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { Bell, Save, Plus, Trash2 } from "lucide-react";
+import { Bell, Save, Plus, Trash2, Zap, TrendingDown, Shield } from "lucide-react";
 import { toast } from "sonner";
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState({
-    default_slippage: 30,
-    priority_fee: 0.001,
-    tp_pct: 30,
-    sl_pct: 15,
-    sound_alerts: true,
-    rpc_endpoint: "https://api.mainnet-beta.solana.com",
-  });
+  const [settings, setSettings] = useState(null);
   const [alerts, setAlerts] = useState([]);
   const [name, setName] = useState("");
-  const [score, setScore] = useState(70);
+  const [scoreThr, setScoreThr] = useState(70);
 
   const load = async () => {
     const [s, a] = await Promise.all([api.settings(), api.alerts()]);
@@ -26,9 +19,11 @@ export default function SettingsPage() {
     load();
   }, []);
 
-  const save = async () => {
+  const save = async (patch = {}) => {
     try {
-      await api.saveSettings(settings);
+      const next = { ...settings, ...patch };
+      setSettings(next);
+      await api.saveSettings(next);
       toast.success("Settings saved");
     } catch (e) {
       toast.error("Save failed");
@@ -39,7 +34,7 @@ export default function SettingsPage() {
     e.preventDefault();
     if (!name) return;
     try {
-      await api.addAlert({ name, type: "score", score_threshold: Number(score), channels: ["browser"] });
+      await api.addAlert({ name, type: "score", score_threshold: Number(scoreThr), channels: ["browser"] });
       setName("");
       load();
       toast.success("Alert created");
@@ -53,71 +48,114 @@ export default function SettingsPage() {
     load();
   };
 
+  if (!settings) {
+    return <div className="px-4 py-8 font-mono text-xs uppercase text-[#5C5C6E]">Loading…</div>;
+  }
+
+  const set = (k) => (v) => setSettings({ ...settings, [k]: typeof v === "string" ? v : Number(v) });
+
   return (
     <div className="px-4 py-4 grid lg:grid-cols-2 gap-3">
+      {/* Auto-Snipe Engine */}
+      <div className="terminal-panel lg:col-span-2">
+        <div className="px-3 py-2 border-b border-[#1A1A24] font-mono text-[11px] uppercase tracking-widest flex items-center gap-2">
+          <Zap className="w-3.5 h-3.5 text-neon-green" />
+          <span className="text-neon-green glow-green">AUTO-SNIPE ENGINE</span>
+          <label className="ml-auto flex items-center gap-2 cursor-pointer" data-testid="auto-snipe-enabled-toggle">
+            <input
+              type="checkbox"
+              checked={settings.auto_snipe_enabled}
+              onChange={(e) => save({ auto_snipe_enabled: e.target.checked })}
+              className="accent-neon-green"
+            />
+            <span className="font-mono text-[11px] uppercase tracking-widest">
+              {settings.auto_snipe_enabled ? "ARMED" : "DISARMED"}
+            </span>
+          </label>
+        </div>
+        <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Field label="Amount per snipe (SOL)" type="number" step="0.1" value={settings.auto_snipe_amount_sol} onChange={set("auto_snipe_amount_sol")} testid="setting-snipe-amount" />
+          <Field label="Min AI Score" type="number" value={settings.auto_snipe_min_score} onChange={set("auto_snipe_min_score")} testid="setting-min-score" />
+          <Field label="Min Liquidity USD" type="number" value={settings.auto_snipe_min_liq_usd} onChange={set("auto_snipe_min_liq_usd")} testid="setting-min-liq" />
+          <Field label="Max age (min)" type="number" value={settings.auto_snipe_max_age_min} onChange={set("auto_snipe_max_age_min")} testid="setting-max-age" />
+        </div>
+        <div className="px-4 pb-4">
+          <button onClick={() => save()} data-testid="save-snipe-rules" className="btn-neon-green flex items-center gap-2">
+            <Save className="w-3.5 h-3.5" /> SAVE RULES
+          </button>
+        </div>
+      </div>
+
+      {/* Auto-Sell ladder */}
+      <div className="terminal-panel lg:col-span-2">
+        <div className="px-3 py-2 border-b border-[#1A1A24] font-mono text-[11px] uppercase tracking-widest flex items-center gap-2">
+          <TrendingDown className="w-3.5 h-3.5 text-neon-cyan" />
+          <span className="text-neon-cyan glow-cyan">AUTO-SELL LADDER (TP / SL / TRAILING)</span>
+          <label className="ml-auto flex items-center gap-2 cursor-pointer" data-testid="auto-sell-enabled-toggle">
+            <input
+              type="checkbox"
+              checked={settings.auto_sell_enabled}
+              onChange={(e) => save({ auto_sell_enabled: e.target.checked })}
+              className="accent-neon-cyan"
+            />
+            <span className="font-mono text-[11px] uppercase tracking-widest">
+              {settings.auto_sell_enabled ? "ACTIVE" : "OFF"}
+            </span>
+          </label>
+        </div>
+        <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Field label="TP1 %" value={settings.tp1_pct} onChange={set("tp1_pct")} type="number" testid="setting-tp1" />
+          <Field label="TP1 sell %" value={settings.tp1_sell_pct} onChange={set("tp1_sell_pct")} type="number" testid="setting-tp1-sell" />
+          <Field label="TP2 %" value={settings.tp2_pct} onChange={set("tp2_pct")} type="number" testid="setting-tp2" />
+          <Field label="TP2 sell %" value={settings.tp2_sell_pct} onChange={set("tp2_sell_pct")} type="number" testid="setting-tp2-sell" />
+          <Field label="TP3 %" value={settings.tp3_pct} onChange={set("tp3_pct")} type="number" testid="setting-tp3" />
+          <Field label="TP3 sell %" value={settings.tp3_sell_pct} onChange={set("tp3_sell_pct")} type="number" testid="setting-tp3-sell" />
+          <Field label="Trailing (moonbag) %" value={settings.moonbag_trailing_pct} onChange={set("moonbag_trailing_pct")} type="number" testid="setting-trailing" />
+          <Field label="Stop Loss %" value={settings.stop_loss_pct} onChange={set("stop_loss_pct")} type="number" testid="setting-sl" />
+        </div>
+        <div className="px-4 pb-4">
+          <button onClick={() => save()} data-testid="save-sell-rules" className="btn-neon-green flex items-center gap-2">
+            <Save className="w-3.5 h-3.5" /> SAVE LADDER
+          </button>
+        </div>
+      </div>
+
+      {/* Risk limits */}
+      <div className="terminal-panel">
+        <div className="px-3 py-2 border-b border-[#1A1A24] font-mono text-[11px] uppercase tracking-widest flex items-center gap-2">
+          <Shield className="w-3.5 h-3.5 text-neon-yellow" />
+          <span className="text-neon-yellow">RISK LIMITS</span>
+        </div>
+        <div className="p-4 grid grid-cols-2 gap-3">
+          <Field label="Max position % of bankroll" value={settings.max_position_pct} onChange={set("max_position_pct")} type="number" testid="setting-max-pos-pct" />
+          <Field label="Max open positions" value={settings.max_open_positions} onChange={set("max_open_positions")} type="number" testid="setting-max-open" />
+          <Field label="Daily loss limit %" value={settings.daily_loss_limit_pct} onChange={set("daily_loss_limit_pct")} type="number" testid="setting-daily-loss" />
+          <Field label="Daily profit lock %" value={settings.daily_profit_lock_pct} onChange={set("daily_profit_lock_pct")} type="number" testid="setting-daily-profit" />
+        </div>
+        <div className="px-4 pb-4">
+          <button onClick={() => save()} data-testid="save-risk-limits" className="btn-neon-green flex items-center gap-2">
+            <Save className="w-3.5 h-3.5" /> SAVE LIMITS
+          </button>
+        </div>
+      </div>
+
+      {/* Trading defaults */}
       <div className="terminal-panel">
         <div className="px-3 py-2 border-b border-[#1A1A24] font-mono text-[11px] uppercase tracking-widest">
           Trading Defaults
         </div>
         <div className="p-4 space-y-4">
-          <Field
-            label="Default Slippage %"
-            value={settings.default_slippage}
-            onChange={(v) => setSettings({ ...settings, default_slippage: Number(v) })}
-            type="number"
-            testid="setting-slippage"
-          />
-          <Field
-            label="Priority Fee (SOL)"
-            value={settings.priority_fee}
-            onChange={(v) => setSettings({ ...settings, priority_fee: Number(v) })}
-            type="number"
-            step="0.0001"
-            testid="setting-priority-fee"
-          />
-          <div className="grid grid-cols-2 gap-3">
-            <Field
-              label="Take Profit %"
-              value={settings.tp_pct}
-              onChange={(v) => setSettings({ ...settings, tp_pct: Number(v) })}
-              type="number"
-              testid="setting-tp"
-            />
-            <Field
-              label="Stop Loss %"
-              value={settings.sl_pct}
-              onChange={(v) => setSettings({ ...settings, sl_pct: Number(v) })}
-              type="number"
-              testid="setting-sl"
-            />
-          </div>
-          <Field
-            label="RPC Endpoint"
-            value={settings.rpc_endpoint}
-            onChange={(v) => setSettings({ ...settings, rpc_endpoint: v })}
-            testid="setting-rpc"
-          />
-          <label className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-[#8A8A9E] cursor-pointer">
-            <input
-              type="checkbox"
-              checked={settings.sound_alerts}
-              onChange={(e) => setSettings({ ...settings, sound_alerts: e.target.checked })}
-              data-testid="setting-sound"
-              className="accent-neon-green"
-            />
-            Sound Alerts
-          </label>
-          <button
-            onClick={save}
-            data-testid="save-settings-button"
-            className="btn-neon-green flex items-center gap-2"
-          >
+          <Field label="Default Slippage %" value={settings.default_slippage} onChange={set("default_slippage")} type="number" testid="setting-slippage" />
+          <Field label="Priority Fee (SOL)" value={settings.priority_fee} onChange={set("priority_fee")} type="number" step="0.0001" testid="setting-priority-fee" />
+          <Field label="RPC Endpoint" value={settings.rpc_endpoint} onChange={(v) => setSettings({ ...settings, rpc_endpoint: v })} testid="setting-rpc" />
+          <button onClick={() => save()} data-testid="save-settings-button" className="btn-neon-green flex items-center gap-2">
             <Save className="w-3.5 h-3.5" /> SAVE
           </button>
         </div>
       </div>
 
-      <div className="terminal-panel">
+      {/* Alert rules */}
+      <div className="terminal-panel lg:col-span-2">
         <div className="px-3 py-2 border-b border-[#1A1A24] font-mono text-[11px] uppercase tracking-widest flex items-center gap-2">
           <Bell className="w-3.5 h-3.5 text-neon-yellow" /> Alert Rules
         </div>
@@ -129,15 +167,7 @@ export default function SettingsPage() {
             data-testid="alert-name-input"
             className="flex-1 bg-black border border-[#1A1A24] px-3 py-1.5 font-mono text-xs uppercase outline-none focus:border-neon-cyan"
           />
-          <input
-            type="number"
-            value={score}
-            onChange={(e) => setScore(e.target.value)}
-            data-testid="alert-score-input"
-            className="w-20 bg-black border border-[#1A1A24] px-2 py-1.5 font-mono text-xs"
-            min={0}
-            max={100}
-          />
+          <input type="number" value={scoreThr} onChange={(e) => setScoreThr(e.target.value)} data-testid="alert-score-input" className="w-20 bg-black border border-[#1A1A24] px-2 py-1.5 font-mono text-xs" min={0} max={100} />
           <button data-testid="create-alert-button" className="btn-neon-green flex items-center gap-1">
             <Plus className="w-3 h-3" />
           </button>
@@ -149,11 +179,7 @@ export default function SettingsPage() {
             </div>
           )}
           {alerts.map((a) => (
-            <div
-              key={a.id}
-              className="p-3 flex items-center gap-3 hover:bg-[#14141A]"
-              data-testid={`alert-row-${a.id}`}
-            >
+            <div key={a.id} className="p-3 flex items-center gap-3 hover:bg-[#14141A]" data-testid={`alert-row-${a.id}`}>
               <div className="flex-1">
                 <div className="font-mono text-sm text-white">{a.name}</div>
                 <div className="font-mono text-[10px] uppercase tracking-widest text-[#5C5C6E]">
@@ -163,11 +189,7 @@ export default function SettingsPage() {
               <span className="px-1.5 py-0.5 border border-neon-green text-neon-green font-mono text-[10px] uppercase">
                 {a.enabled ? "ON" : "OFF"}
               </span>
-              <button
-                onClick={() => removeAlert(a.id)}
-                className="text-[#5C5C6E] hover:text-neon-red"
-                data-testid={`remove-alert-${a.id}`}
-              >
+              <button onClick={() => removeAlert(a.id)} className="text-[#5C5C6E] hover:text-neon-red" data-testid={`remove-alert-${a.id}`}>
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -181,9 +203,7 @@ export default function SettingsPage() {
 function Field({ label, value, onChange, type = "text", step, testid }) {
   return (
     <label className="block">
-      <span className="font-mono text-[10px] uppercase tracking-widest text-[#5C5C6E]">
-        {label}
-      </span>
+      <span className="font-mono text-[10px] uppercase tracking-widest text-[#5C5C6E]">{label}</span>
       <input
         type={type}
         step={step}
