@@ -171,6 +171,8 @@ class Settings(BaseModel):
     sl_pct: float = 15.0
     sound_alerts: bool = True
     rpc_endpoint: str = "https://api.mainnet-beta.solana.com"
+    # Paper trading toggle (hidden from UI banner, controls execution mode)
+    paper_mode: bool = True  # true = simulation; false = on-chain (requires wallet)
     # Auto-Snipe engine
     auto_snipe_enabled: bool = False
     auto_snipe_amount_sol: float = 0.3
@@ -844,15 +846,58 @@ async def partial_close(req: PartialCloseRequest):
 
 
 @api_router.get("/portfolio/stats")
-async def portfolio_stats():
-    items = await db.positions.find({}, {"_id": 0}).to_list(1000)
+async def portfolio_stats(timeframe: str = Query("all")):
+    """timeframe: 24h | 7d | all"""
+    now_ts = datetime.now(timezone.utc)
+    since_iso = None
+    if timeframe == "24h":
+        since_iso = (now_ts - timedelta(hours=24)).isoformat()
+    elif timeframe == "7d":
+        since_iso = (now_ts - timedelta(days=7)).isoformat()
+
+    all_items = await db.positions.find({}, {"_id": 0}).to_list(2000)
     bk = await get_bankroll()
+
+    # Filter by timeframe (use opened_at)
+    items = [p for p in all_items if not since_iso or (p.get("opened_at") or "") >= since_iso]
+
     total_invested = sum(p["amount_sol"] for p in items)
     closed = [p for p in items if p["status"] == "closed"]
     open_ = [p for p in items if p["status"] == "open"]
     realized = sum(p.get("pnl_sol") or 0 for p in closed)
+
+    # Unrealized PnL — fetch current prices for open positions
+    open_addrs = list({p["token_address"] for p in open_})
+    prices = await get_live_prices(open_addrs) if open_addrs else {}
+    unrealized = 0.0
+    for p in open_:
+        cur = prices.get(p["token_address"])
+        if cur and p.get("tokens_remaining") is not None:
+            remaining = p["tokens_remaining"] or p["tokens"]
+            cost_basis_sol = p["amount_sol"] * (remaining / p["tokens"]) if p["tokens"] else 0
+            cur_value_sol = (remaining * cur) / SOL_PRICE_USD
+            unrealized += cur_value_sol - cost_basis_sol
+
     wins = sum(1 for p in closed if (p.get("pnl_sol") or 0) > 0)
+    losses = sum(1 for p in closed if (p.get("pnl_sol") or 0) < 0)
     win_rate = (wins / len(closed) * 100) if closed else 0
+
+    # Avg hold duration for closed positions
+    hold_durations: List[float] = []
+    for p in closed:
+        try:
+            op = datetime.fromisoformat(p.get("opened_at"))
+            cl = datetime.fromisoformat(p.get("closed_at"))
+            hold_durations.append((cl - op).total_seconds() / 60.0)
+        except Exception:
+            pass
+    avg_hold_min = sum(hold_durations) / len(hold_durations) if hold_durations else 0
+
+    # Best / worst
+    best_trade = max(closed, key=lambda p: p.get("pnl_pct") or -1e9, default=None)
+    worst_trade = min(closed, key=lambda p: p.get("pnl_pct") or 1e9, default=None)
+
+    # By source
     by_source: Dict[str, Dict[str, Any]] = {}
     for p in closed:
         s = p.get("source", "manual")
@@ -861,23 +906,94 @@ async def portfolio_stats():
         bs["pnl_sol"] += p.get("pnl_sol") or 0
         if (p.get("pnl_sol") or 0) > 0:
             bs["wins"] += 1
-    # Daily PnL
+
     daily_pnl_sol = bk["balance_sol"] + sum(p["amount_sol"] for p in open_) - bk["day_start_balance_sol"]
     daily_pnl_pct = (daily_pnl_sol / bk["day_start_balance_sol"] * 100) if bk["day_start_balance_sol"] else 0
+
+    total_recovered = sum(p["amount_sol"] + (p.get("pnl_sol") or 0) for p in closed)
+
     return {
+        "timeframe": timeframe,
         "bankroll_sol": round(bk["balance_sol"], 4),
         "initial_sol": bk["initial_sol"],
         "realized_pnl_sol": round(realized, 4),
+        "unrealized_pnl_sol": round(unrealized, 4),
+        "total_pnl_sol": round(realized + unrealized, 4),
         "total_invested_sol": round(total_invested, 4),
+        "total_recovered_sol": round(total_recovered, 4),
         "win_rate": round(win_rate, 1),
+        "wins": wins,
+        "losses": losses,
         "open_positions": len(open_),
         "closed_positions": len(closed),
         "trades_total": len(items),
+        "avg_hold_min": round(avg_hold_min, 1),
+        "best_trade": {"symbol": best_trade["symbol"], "pnl_pct": best_trade.get("pnl_pct")} if best_trade else None,
+        "worst_trade": {"symbol": worst_trade["symbol"], "pnl_pct": worst_trade.get("pnl_pct")} if worst_trade else None,
         "by_source": by_source,
         "daily_pnl_sol": round(daily_pnl_sol, 4),
         "daily_pnl_pct": round(daily_pnl_pct, 2),
         "auto_snipe_locked": bk.get("auto_snipe_locked", False),
     }
+
+
+@api_router.get("/portfolio/equity-history")
+async def equity_history(timeframe: str = Query("all")):
+    """Cumulative equity curve = initial + realized pnl of closed trades sorted by close time."""
+    now_ts = datetime.now(timezone.utc)
+    since_iso = None
+    if timeframe == "24h":
+        since_iso = (now_ts - timedelta(hours=24)).isoformat()
+    elif timeframe == "7d":
+        since_iso = (now_ts - timedelta(days=7)).isoformat()
+
+    items = await db.positions.find({"status": "closed"}, {"_id": 0}).to_list(5000)
+    items.sort(key=lambda p: p.get("closed_at") or "")
+    if since_iso:
+        items = [p for p in items if (p.get("closed_at") or "") >= since_iso]
+    bk = await get_bankroll()
+    equity = bk["initial_sol"]
+    points = [{"ts": items[0]["opened_at"] if items else now_ts.isoformat(), "equity": round(equity, 4)}]
+    for p in items:
+        equity += p.get("pnl_sol") or 0
+        points.append({
+            "ts": p.get("closed_at"),
+            "equity": round(equity, 4),
+            "symbol": p.get("symbol"),
+            "pnl_sol": p.get("pnl_sol"),
+        })
+    return {"points": points}
+
+
+@api_router.get("/portfolio/export-csv")
+async def export_csv():
+    items = await db.positions.find({}, {"_id": 0}).to_list(5000)
+    items.sort(key=lambda p: p.get("opened_at", ""), reverse=True)
+    lines = [
+        "opened_at,closed_at,symbol,token_address,source,status,entry_price,exit_price,amount_sol,tokens,pnl_sol,pnl_pct,tp_hits"
+    ]
+    for p in items:
+        lines.append(",".join([
+            str(p.get("opened_at") or ""),
+            str(p.get("closed_at") or ""),
+            str(p.get("symbol") or ""),
+            str(p.get("token_address") or ""),
+            str(p.get("source") or "manual"),
+            str(p.get("status") or ""),
+            str(p.get("entry_price") or ""),
+            str(p.get("exit_price") or ""),
+            str(p.get("amount_sol") or 0),
+            str(p.get("tokens") or 0),
+            str(p.get("pnl_sol") or 0),
+            str(p.get("pnl_pct") or 0),
+            "|".join(p.get("tp_hits") or []),
+        ]))
+    from fastapi.responses import Response
+    return Response(
+        content="\n".join(lines),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=snipr-trades.csv"},
+    )
 
 
 @api_router.get("/bankroll")
@@ -957,7 +1073,10 @@ async def get_settings():
         await db.settings.insert_one({"_id": "global", **s})
         return s
     item.pop("_id", None)
-    return item
+    # Merge with model defaults so newly added fields are always returned
+    defaults = Settings().model_dump()
+    merged = {**defaults, **item}
+    return merged
 
 
 @api_router.put("/settings")

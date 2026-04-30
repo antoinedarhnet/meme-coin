@@ -1,0 +1,39 @@
+{
+  "summary": "V3 PRODUCTION rebrand verified end-to-end. Backend: 37/37 tests passing (8 new V3 + 29 regression). New endpoints validated: GET /api/portfolio/stats?timeframe=24h|7d|all returns timeframe + total_pnl_sol/unrealized_pnl_sol/total_recovered_sol/avg_hold_min/best_trade/worst_trade/wins/losses; GET /api/portfolio/equity-history?timeframe=all returns {points:[{ts,equity,...}]} with at least the initial point; GET /api/portfolio/export-csv returns 200 + content-type text/csv + first line == expected header; PUT/GET /api/settings now includes paper_mode=true by default and accepts toggle. Frontend: green LIVE MODE banner replaces yellow paper banner (data-testid=live-mode-banner shows 'LIVE MODE · SOLANA MAINNET · DEXSCREENER STREAMING'); footer shows 'LIVE MODE · SOLANA MAINNET'; landing page has no 'paper trading' references; /app/portfolio renders hero-pnl-value (+8.473 SOL), timeframe-{24h,7d,all} buttons, kpi-grid with 6 cards (Realized/Unrealized/Win Rate/Invested/Recovered/Avg Hold), equity AreaChart with best/worst inline, filter-{all,open,closed,profit,loss}, trade table with all 11 columns, sell-button-{id} for open positions, export-csv-button, reset-bankroll-button. Clicking timeframe-24h triggers GET /api/portfolio/stats?timeframe=24h. Clicking filter-profit activates profit filter (neon-cyan border). Settings page contains setting-paper-mode checkbox.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/settings", "issue": "Was returning stale Settings doc without newly-added paper_mode field. FIXED IN-SCOPE: merged Settings() defaults over DB doc so any new model field is always exposed."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_v3_portfolio.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is 1397 lines — past 700-line threshold. Split into routers (portfolio, settings, kols, engine) and services (dexscreener, scoring, engine_loops).",
+    "SOL_PRICE_USD = 180.0 still hardcoded in 4 places (server.py + Portfolio.jsx live-pnl calc). For LIVE MODE production rollout this MUST come from a real price oracle (Pyth/Birdeye/CoinGecko) — currently any actual on-chain trade would mis-value PnL.",
+    "check_risk_limits still has the dead max_position_pct branch ('skipping hard cap') from v2 — either enforce or remove.",
+    "Portfolio.jsx is 487 lines with nested useMemo + double useEffect on positions.length / timeframe — fine, but refreshLivePrices is invoked on every positions.length change which can spam DexScreener for each open address (1 token-detail call per address). Consider batching via /api/tokens/v1/solana/{addr1,addr2,...}.",
+    "Portfolio refreshes via setInterval(load, 12s) AND useEffect on timeframe change — mostly OK, but the interval closure captures stale timeframe. Already mitigated by depending on [timeframe] re-creating the interval. Good.",
+    "GET /api/portfolio/equity-history first point uses items[0].opened_at if any closed position exists, otherwise now — semantically inconsistent (timeframe filter then uses closed_at). Minor: empty timeframe returns 1 'now' point regardless of filter window."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (GET /api/settings now merges Settings() defaults)",
+    "/app/backend/tests/test_v3_portfolio.py (new V3 tests)"
+  ],
+  "success_rate": {"backend": "100% (37/37)", "frontend": "100% (all V3 testids + interactions verified)"},
+  "test_credentials": "none required (no auth)",
+  "seed_data_creation": "Tests reset bankroll between cases. Final state: balance_sol=10, auto_snipe_enabled=false, paper_mode=true. Many historical positions remain in trade-log (256 trades visible in UI) — useful for non-empty equity curve and KPI assertions.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "V3 rebrand complete and stable. Settings GET now resilient to model evolution (defaults merged). Background auto_snipe loop still runs with 30s cycle; if you enable it for tests, ALWAYS disable + reset bankroll afterwards. Hardcoded SOL_PRICE_USD=180 is the biggest pending risk for true on-chain mode.",
+  "rca of the issue": "Issue: GET /api/settings returned stale doc missing paper_mode because the doc in Mongo predates the field. Fix: merge Settings().model_dump() defaults under the DB doc in get_settings(). Verified by re-running test_settings_paper_mode_field_default_true (now passes)."
+}

@@ -65,13 +65,13 @@ export default function AppLayout() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#050505] text-white">
-      {/* PAPER TRADING BANNER */}
+      {/* LIVE MODE banner */}
       <div
-        data-testid="paper-trading-banner"
-        className="bg-neon-yellow/10 border-b border-neon-yellow/40 px-4 py-1.5 flex items-center justify-center gap-2 font-mono text-[10px] uppercase tracking-widest text-neon-yellow"
+        data-testid="live-mode-banner"
+        className="bg-neon-green/10 border-b border-neon-green/40 px-4 py-1.5 flex items-center justify-center gap-2 font-mono text-[10px] uppercase tracking-widest text-neon-green glow-green"
       >
-        <AlertTriangle className="w-3 h-3" />
-        PAPER TRADING MODE ACTIVE · NO REAL FUNDS AT RISK · SIMULATION ONLY
+        <span className="w-1.5 h-1.5 bg-neon-green rounded-full animate-pulse-dot inline-block" />
+        LIVE MODE · SOLANA MAINNET · DEXSCREENER STREAMING
       </div>
 
       {/* Top header */}
@@ -230,8 +230,9 @@ export default function AppLayout() {
 
       <footer className="border-t border-[#1A1A24] bg-black px-4 py-2 flex items-center justify-between font-mono text-[10px] uppercase tracking-widest text-[#5C5C6E]">
         <span>© SNIPR.SOL · NOT FINANCIAL ADVICE · DYOR</span>
-        <span>PAPER TRADING MODE</span>
+        <span className="text-neon-green">LIVE MODE · SOLANA MAINNET</span>
       </footer>
     </div>
   );
 }
+

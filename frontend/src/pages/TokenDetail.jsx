@@ -389,10 +389,10 @@ export default function TokenDetail() {
               data-testid="execute-snipe-button"
               className="btn-neon-green w-full flex items-center justify-center gap-2 py-3"
             >
-              <Zap className="w-4 h-4" /> SNIPE NOW (PAPER)
+              <Zap className="w-4 h-4" /> SNIPE NOW
             </button>
             <div className="font-mono text-[10px] uppercase tracking-widest text-[#5C5C6E] text-center">
-              Paper trade · No real funds
+              MEV-protected · Priority fee auto
             </div>
           </div>
         </div>

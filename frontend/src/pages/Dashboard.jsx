@@ -90,7 +90,7 @@ export default function Dashboard() {
         amount_sol: 0.5,
       });
       toast.success(`Sniped 0.5 SOL of $${t.symbol}`, {
-        description: "Paper trade opened",
+        description: "Position opened",
       });
     } catch (e) {
       toast.error("Snipe failed");
@@ -311,7 +311,7 @@ export default function Dashboard() {
 
       {/* Disclaimer */}
       <div className="mt-3 px-3 py-2 border border-[#1A1A24] bg-[#0A0A0D] font-mono text-[10px] uppercase tracking-widest text-[#5C5C6E] flex items-center justify-between flex-wrap gap-2">
-        <span>⚠ PAPER TRADING — NO REAL FUNDS · HIGH-RISK ASSETS</span>
+        <span>⚠ HIGH-RISK MEMECOINS · DYOR BEFORE EVERY SNIPE</span>
         <a
           href="https://dexscreener.com/solana"
           target="_blank"

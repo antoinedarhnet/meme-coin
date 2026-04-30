@@ -148,6 +148,21 @@ export default function SettingsPage() {
           <Field label="Default Slippage %" value={settings.default_slippage} onChange={set("default_slippage")} type="number" testid="setting-slippage" />
           <Field label="Priority Fee (SOL)" value={settings.priority_fee} onChange={set("priority_fee")} type="number" step="0.0001" testid="setting-priority-fee" />
           <Field label="RPC Endpoint" value={settings.rpc_endpoint} onChange={(v) => setSettings({ ...settings, rpc_endpoint: v })} testid="setting-rpc" />
+          <label className="flex items-start justify-between gap-3 p-3 border border-[#1A1A24] bg-black/40 cursor-pointer">
+            <div>
+              <div className="font-mono text-[11px] uppercase tracking-widest text-white">Paper Trading Mode</div>
+              <div className="font-mono text-[10px] text-[#5C5C6E] mt-0.5 max-w-sm">
+                When ON, trades are simulated against a virtual bankroll. When OFF, requires a connected Phantom wallet for real on-chain execution.
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={settings.paper_mode ?? true}
+              onChange={(e) => save({ paper_mode: e.target.checked })}
+              data-testid="setting-paper-mode"
+              className="accent-neon-cyan mt-1"
+            />
+          </label>
           <button onClick={() => save()} data-testid="save-settings-button" className="btn-neon-green flex items-center gap-2">
             <Save className="w-3.5 h-3.5" /> SAVE
           </button>

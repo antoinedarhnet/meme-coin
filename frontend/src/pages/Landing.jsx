@@ -48,8 +48,8 @@ const FEATURES = [
   },
   {
     icon: Zap,
-    title: "1-Click Paper Snipe",
-    body: "Test sniping strategies with paper trading. Configurable slippage, TP/SL, priority fee, full P&L tracker.",
+    title: "1-Click Live Snipe",
+    body: "Execute trades in one click with configurable slippage, TP/SL ladder, priority fee, and full live P&L tracker — built for speed.",
     accent: "text-neon-green border-neon-green/30",
   },
 ];
@@ -402,7 +402,7 @@ else:             risk = SAFE`}
         className="border-t border-[#1A1A24] bg-black px-6 py-8 text-center font-mono text-[10px] uppercase tracking-widest text-[#5C5C6E]"
       >
         ⚠ DISCLAIMER · MEMECOINS ARE EXTREMELY VOLATILE · YOU CAN LOSE EVERYTHING · THIS IS NOT
-        FINANCIAL ADVICE · PAPER TRADING ONLY · DYOR
+        FINANCIAL ADVICE · DYOR
       </footer>
     </div>
   );
