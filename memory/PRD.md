@@ -77,3 +77,34 @@ French user asked for a Solana memecoin sniping platform inspired by GMGN/BullX/
 ## Next Tasks
 1. End-to-end testing via `testing_agent_v3`
 2. Iterate on user feedback
+
+## V3.0 PRODUCTION Rebrand (Apr 2026)
+
+### Priority 1 — LIVE MODE branding
+- Removed yellow "PAPER TRADING" banner; replaced with green "LIVE MODE · SOLANA MAINNET · DEXSCREENER STREAMING"
+- Footer now reads "LIVE MODE · SOLANA MAINNET"
+- Landing + Dashboard + TokenDetail: all "paper" / "simulation" text scrubbed
+- "SNIPE NOW (PAPER)" → "SNIPE NOW"
+- Discrete `paper_mode` boolean added to Settings (default true; toggle in Trading Defaults with explanation). When false, engine would route to on-chain Jupiter (not yet wired — requires Phantom connect)
+
+### Priority 2 — Portfolio PNL v2
+- Hero PNL big number (60px green/red with glow) with % vs initial, USD equivalent, live balance
+- 24H / 7D / ALL TIME timeframe tabs (backend filters positions by opened_at)
+- 6 KPI cards: Realized · Unrealized · Win Rate · Invested · Recovered · Avg Hold
+- Equity curve area chart with BEST/WORST trade badges inline in the header
+- 5-way filter: All / Open / Closed / Profit / Loss
+- 11-column trade table: Token · Source · Buy Price · Current/Sell · Amount · PNL SOL · PNL $ · PNL % · Hold · Status · SELL
+- Live unrealized PnL computed client-side from DexScreener prices for open positions
+- CSV export button (server-rendered `GET /api/portfolio/export-csv`)
+- Reset bankroll button
+
+### New endpoints
+- `GET /api/portfolio/stats?timeframe=24h|7d|all`
+- `GET /api/portfolio/equity-history?timeframe=...`
+- `GET /api/portfolio/export-csv`
+
+### Next phases (on hold until user goes)
+- P3: New pairs sniping (<2min launches) via Raydium polling
+- P4: Whale Tracker with 8 preloaded wallets (via Solana public RPC)
+- P5: Rugcheck.xyz integration, Copy Whale / KOL Mention signals, sound alerts, keyboard shortcuts
+- P6: Phantom wallet connect + Jupiter swap for real on-chain execution (requires user sign)
