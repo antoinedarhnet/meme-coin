@@ -184,8 +184,8 @@ class Settings(BaseModel):
     # Auto-Snipe engine
     auto_snipe_enabled: bool = False
     auto_snipe_amount_sol: float = 0.3
-    auto_snipe_min_score: int = 82
-    auto_snipe_min_liq_usd: float = 25000.0
+    auto_snipe_min_score: int = 75
+    auto_snipe_min_liq_usd: float = 10000.0
     auto_snipe_max_age_min: float = 240.0  # only snipe tokens < 4h old
     auto_snipe_risks_blocked: List[str] = ["danger", "rug"]
     # Auto-Sell ladder
@@ -197,12 +197,12 @@ class Settings(BaseModel):
     tp3_pct: float = 200.0
     tp3_sell_pct: float = 25.0
     moonbag_trailing_pct: float = 30.0
-    stop_loss_pct: float = 25.0
+    stop_loss_pct: float = 40.0
     rug_liq_drop_pct: float = 50.0
     # Risk limits
     max_position_pct: float = 2.0  # % of bankroll per snipe
-    max_open_positions: int = 6
-    daily_loss_limit_pct: float = 7.0  # -7% => auto-snipe OFF
+    max_open_positions: int = 10
+    daily_loss_limit_pct: float = 10.0  # -10% => auto-snipe OFF
     daily_profit_lock_pct: float = 30.0
 
 
@@ -775,7 +775,7 @@ async def check_risk_limits(amount_sol: float) -> Optional[str]:
     if amount_sol > (bk["balance_sol"] + bk["realized_pnl_sol"]) * (max_pct / 100.0) * 50:
         # lenient: 50x headroom (2% of 10 SOL = 0.2 SOL, allow up to 10 SOL)
         pass  # skipping hard cap, just informative
-    max_open = settings_doc.get("max_open_positions", 6)
+    max_open = settings_doc.get("max_open_positions", 10)
     open_count = await db.positions.count_documents({"status": "open"})
     if open_count >= max_open:
         return f"max open positions reached ({open_count}/{max_open})"
@@ -1171,7 +1171,7 @@ async def wallet_nonce(req: WalletNonceRequest):
     message = (
         f"snipr.sol wants you to sign in with your Solana account:\n"
         f"{req.wallet_address}\n\n"
-        f"Welcome to SNIPER.SOL terminal. Sign this one-time message to authenticate.\n\n"
+        f"Welcome to SNIPR.SOL terminal. Sign this one-time message to authenticate.\n\n"
         f"Nonce: {nonce}\n"
         f"Issued At: {now}"
     )
@@ -1383,11 +1383,11 @@ async def auto_snipe_loop():
                 continue
 
             amount = float(settings.get("auto_snipe_amount_sol", 0.3))
-            min_score = int(settings.get("auto_snipe_min_score", 82))
-            min_liq = float(settings.get("auto_snipe_min_liq_usd", 25000.0))
+            min_score = int(settings.get("auto_snipe_min_score", 75))
+            min_liq = float(settings.get("auto_snipe_min_liq_usd", 10000.0))
             max_age = float(settings.get("auto_snipe_max_age_min", 240.0))
             blocked_risks = settings.get("auto_snipe_risks_blocked", ["danger", "rug"])
-            max_open = int(settings.get("max_open_positions", 6))
+            max_open = int(settings.get("max_open_positions", 10))
 
             open_count = await db.positions.count_documents({"status": "open"})
             if open_count >= max_open:
@@ -1537,7 +1537,7 @@ async def auto_sell_loop():
             tp3_pct = float(settings.get("tp3_pct", 200.0))
             tp3_sell = float(settings.get("tp3_sell_pct", 25.0))
             trailing = float(settings.get("moonbag_trailing_pct", 30.0))
-            sl_pct = float(settings.get("stop_loss_pct", 25.0))
+            sl_pct = float(settings.get("stop_loss_pct", 40.0))
 
             for pos in open_positions:
                 price = prices.get(pos["token_address"])
@@ -1591,7 +1591,7 @@ async def auto_sell_loop():
             unrealized_cost = sum(p["amount_sol"] for p in open_positions)
             curr_equity = bk["balance_sol"] + unrealized_cost
             daily_change_pct = ((curr_equity - bk["day_start_balance_sol"]) / bk["day_start_balance_sol"] * 100) if bk["day_start_balance_sol"] else 0
-            daily_loss_limit = float(settings.get("daily_loss_limit_pct", 7.0))
+            daily_loss_limit = float(settings.get("daily_loss_limit_pct", 10.0))
             if daily_change_pct <= -daily_loss_limit and not bk.get("auto_snipe_locked"):
                 await db.bankroll.update_one({"_id": "global"}, {"$set": {"auto_snipe_locked": True}})
                 push_event("risk_lock", f"DAILY LOSS LIMIT HIT ({daily_change_pct:.1f}%) — auto-snipe locked")

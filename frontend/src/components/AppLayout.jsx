@@ -82,7 +82,7 @@ export default function AppLayout() {
               <Zap className="w-4 h-4 text-neon-green" />
             </div>
             <div className="leading-tight">
-              <div className="font-display font-bold text-sm tracking-tight">SNIPR.SOL</div>
+              <div className="font-display font-bold text-sm tracking-tight">SNIPER.SOL</div>
               <div className="font-mono text-[9px] uppercase tracking-widest text-neon-green glow-green">
                 TERMINAL // V1
               </div>
@@ -229,7 +229,7 @@ export default function AppLayout() {
       </main>
 
       <footer className="border-t border-[#1A1A24] bg-black px-4 py-2 flex items-center justify-between font-mono text-[10px] uppercase tracking-widest text-[#5C5C6E]">
-        <span>© SNIPR.SOL · NOT FINANCIAL ADVICE · DYOR</span>
+        <span>© SNIPER.SOL · NOT FINANCIAL ADVICE · DYOR</span>
         <span className="text-neon-green">LIVE MODE · SOLANA MAINNET</span>
       </footer>
     </div>
