@@ -18,6 +18,7 @@ import { toast } from "sonner";
 
 const NAV = [
   { to: "/app", label: "Live Feed", icon: Activity, end: true },
+  { to: "/app/new-pairs", label: "New Pairs", icon: Activity },
   { to: "/app/kol", label: "KOL Watchlist", icon: Twitter },
   { to: "/app/trending", label: "Narratives", icon: Flame },
   { to: "/app/portfolio", label: "Portfolio", icon: Wallet },
@@ -29,12 +30,18 @@ export default function AppLayout() {
   const crumbs = location.pathname.split("/").filter(Boolean);
   const [bankroll, setBankroll] = useState(null);
   const [engine, setEngine] = useState(null);
+  const [newPairsCount, setNewPairsCount] = useState(0);
 
   const refresh = async () => {
     try {
-      const [b, e] = await Promise.all([api.bankroll(), api.engine()]);
+      const [b, e, np] = await Promise.all([
+        api.bankroll(),
+        api.engine(),
+        api.newPairsEngine(),
+      ]);
       setBankroll(b);
       setEngine(e);
+      setNewPairsCount(np?.passed_scoring || 0);
     } catch {}
   };
 
@@ -82,7 +89,7 @@ export default function AppLayout() {
               <Zap className="w-4 h-4 text-neon-green" />
             </div>
             <div className="leading-tight">
-              <div className="font-display font-bold text-sm tracking-tight">SNIPR.SOL</div>
+              <div className="font-display font-bold text-sm tracking-tight">SNIPER.SOL</div>
               <div className="font-mono text-[9px] uppercase tracking-widest text-neon-green glow-green">
                 TERMINAL // V1
               </div>
@@ -107,6 +114,9 @@ export default function AppLayout() {
                 <span className="flex items-center gap-1.5">
                   <n.icon className="w-3 h-3" />
                   {n.label}
+                  {n.label === "New Pairs" && (
+                    <span className="ml-1 text-neon-cyan">({newPairsCount})</span>
+                  )}
                 </span>
               </NavLink>
             ))}
@@ -180,6 +190,9 @@ export default function AppLayout() {
               }
             >
               {n.label}
+              {n.label === "New Pairs" && (
+                <span className="ml-1 text-neon-cyan">({newPairsCount})</span>
+              )}
             </NavLink>
           ))}
         </div>
@@ -229,10 +242,9 @@ export default function AppLayout() {
       </main>
 
       <footer className="border-t border-[#1A1A24] bg-black px-4 py-2 flex items-center justify-between font-mono text-[10px] uppercase tracking-widest text-[#5C5C6E]">
-        <span>© SNIPR.SOL · NOT FINANCIAL ADVICE · DYOR</span>
+        <span>© SNIPER.SOL · NOT FINANCIAL ADVICE · DYOR</span>
         <span className="text-neon-green">LIVE MODE · SOLANA MAINNET</span>
       </footer>
     </div>
   );
 }
-

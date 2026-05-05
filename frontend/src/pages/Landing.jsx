@@ -74,7 +74,7 @@ export default function Landing() {
               <Zap className="w-4 h-4 text-neon-green" />
             </div>
             <div>
-              <div className="font-display font-bold tracking-tight">SNIPR.SOL</div>
+              <div className="font-display font-bold tracking-tight">SNIPER.SOL</div>
               <div className="font-mono text-[9px] uppercase tracking-widest text-neon-green glow-green -mt-0.5">
                 TERMINAL · V1
               </div>

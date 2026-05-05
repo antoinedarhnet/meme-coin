@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 import Landing from "@/pages/Landing";
 import AppLayout from "@/components/AppLayout";
 import Dashboard from "@/pages/Dashboard";
+import NewPairs from "@/pages/NewPairs";
 import KOLWatchlist from "@/pages/KOLWatchlist";
 import Trending from "@/pages/Trending";
 import TokenDetail from "@/pages/TokenDetail";
@@ -31,7 +32,8 @@ function App() {
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/app" element={<AppLayout />}>
-            <Route index element={<Dashboard />} />
+          <Route index element={<Dashboard />} />
+          <Route path="new-pairs" element={<NewPairs />} />
             <Route path="kol" element={<KOLWatchlist />} />
             <Route path="trending" element={<Trending />} />
             <Route path="token/:addr" element={<TokenDetail />} />

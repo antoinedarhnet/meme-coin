@@ -1,86 +1,124 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
-import { fmtAge, fmtPct, fmtUsd, shorten } from "@/lib/format";
+import { fmtAge, fmtUsd } from "@/lib/format";
 import ScoreRing from "@/components/ScoreRing";
 import RiskBadge from "@/components/RiskBadge";
-import { ArrowUpDown, RefreshCw, Search, Filter, Zap, ExternalLink } from "lucide-react";
+import { ArrowUpDown, RefreshCw, Search, Filter, Zap, ExternalLink, Power } from "lucide-react";
 import { toast } from "sonner";
 
 const SORTS = [
   { key: "score", label: "Score" },
   { key: "age", label: "Age" },
-  { key: "volume", label: "Volume" },
-  { key: "mc", label: "Market Cap" },
-  { key: "change_24h", label: "24h %" },
 ];
 
-const RISK_FILTERS = [
-  { key: "", label: "All" },
-  { key: "safe", label: "Safe" },
-  { key: "risky", label: "Risky" },
-  { key: "danger", label: "Danger" },
+const AGE_FILTERS = [
+  { key: "5", label: "< 5m" },
+  { key: "15", label: "< 15m" },
+  { key: "60", label: "< 1h" },
 ];
 
-export default function Dashboard() {
+export default function NewPairs() {
   const navigate = useNavigate();
   const [tokens, setTokens] = useState([]);
   const [holdings, setHoldings] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [sort, setSort] = useState("score");
-  const [riskFilter, setRiskFilter] = useState("");
-  const [minLiq, setMinLiq] = useState(0);
-  const [minScore, setMinScore] = useState(0);
+  const [ageFilter, setAgeFilter] = useState("60");
   const [q, setQ] = useState("");
   const [lastRefresh, setLastRefresh] = useState(Date.now());
-  const retryDelayRef = useRef(25000);
+  const [npEngine, setNpEngine] = useState(null);
+  const [settings, setSettings] = useState(null);
+  const [error, setError] = useState(null);
+  const [scanStats, setScanStats] = useState({ scanned: 0, filtered: 0 });
   const errorRef = useRef(false);
-  const timeoutRef = useRef(null);
 
   const load = async () => {
     try {
-      const [r, p] = await Promise.all([
-        api.liveTokens({
-          sort,
-          risk: riskFilter || undefined,
-          min_liq: minLiq,
-          min_score: minScore,
-          limit: 80,
-        }),
+      logger_info("NewPairs load: Starting fetch with timeout 15s...");
+      const results = await Promise.allSettled([
+        api.newPairs({ max_age_min: Number(ageFilter), limit: 80 }, { timeout: 15000 }),
         api.positions({ status: "open" }),
+        api.newPairsEngine(),
+        api.settings(),
       ]);
-      setTokens(r.tokens || []);
-      setHoldings(new Set((p.positions || []).map((x) => x.token_address)));
-      setLastRefresh(Date.now());
-      retryDelayRef.current = 25000;
-      errorRef.current = false;
-    } catch (e) {
-      if (!errorRef.current) {
-        toast.error("Stream interrupted");
-        errorRef.current = true;
-        retryDelayRef.current = 5000;
+
+      const [rRes, pRes, eRes, sRes] = results;
+
+      if (rRes.status === "fulfilled") {
+        const r = rRes.value;
+        logger_info(`NewPairs load: Got ${r.tokens?.length || 0} tokens`);
+        setTokens(r.tokens || []);
+        setScanStats({
+          scanned: r?.meta?.scanned ?? r?.scanned ?? 0,
+          filtered: r?.meta?.filtered ?? r?.filtered ?? 0,
+        });
       } else {
-        retryDelayRef.current = Math.min(retryDelayRef.current * 2, 60000);
+        const error = rRes.reason;
+        console.error("NewPairs GET /tokens/new-pairs failed", error);
+        logger_error(`NewPairs fetch failed: ${error?.message || error}`);
+        // More specific error handling
+        if (error?.code === "ECONNABORTED") {
+          setError("Backend timeout (15s) - check server logs");
+        } else if (error?.response?.status === 0) {
+          setError("Cannot reach backend - connection refused");
+        } else {
+          setError(`Backend error: ${error?.message || "unknown"}`);
+        }
+      }
+
+      if (pRes.status === "fulfilled") {
+        const p = pRes.value;
+        setHoldings(new Set((p.positions || []).map((x) => x.token_address)));
+      } else {
+        console.error("NewPairs GET /portfolio/positions failed", pRes.reason);
+      }
+
+      if (eRes.status === "fulfilled") {
+        setNpEngine(eRes.value);
+      } else {
+        console.error("NewPairs GET /engine/new-pairs/status failed", eRes.reason);
+      }
+
+      if (sRes.status === "fulfilled") {
+        setSettings(sRes.value);
+      } else {
+        console.error("NewPairs GET /settings failed", sRes.reason);
+      }
+
+      setLastRefresh(Date.now());
+      if (rRes.status === "fulfilled") {
+        setError(null);
+        errorRef.current = false;
+      }
+    } catch (e) {
+      console.error("NewPairs load failed", e);
+      logger_error(`NewPairs load() exception: ${e?.message || e}`);
+      setError(`Exception: ${e?.message || "Stream interrupted"}`);
+      if (!errorRef.current) {
+        toast.error("NewPairs load failed - see console");
+        errorRef.current = true;
       }
     } finally {
       setLoading(false);
     }
   };
 
+  // Helper logging
+  const logger_info = (msg) => {
+    console.log(`[NewPairs] ${msg}`);
+  };
+  const logger_error = (msg) => {
+    console.error(`[NewPairs] ${msg}`);
+  };
+
   useEffect(() => {
-    let cancelled = false;
-    const tick = async () => {
-      await load();
-      if (cancelled) return;
-      timeoutRef.current = setTimeout(tick, retryDelayRef.current);
-    };
-    tick();
-    return () => {
-      cancelled = true;
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
+    load();
+    const interval = error ? 5000 : 20000;
+    const t = setInterval(load, interval);
+    return () => clearInterval(t);
     // eslint-disable-next-line
-  }, [sort, riskFilter, minLiq, minScore]);
+  }, [sort, ageFilter, error]);
 
   const filtered = useMemo(() => {
     if (!q) return tokens;
@@ -92,6 +130,20 @@ export default function Dashboard() {
         t.address?.toLowerCase().includes(ql)
     );
   }, [tokens, q]);
+
+  const toggleNewPairs = async () => {
+    if (!settings) return;
+    try {
+      const next = !settings.new_pairs_enabled;
+      const payload = { ...settings, new_pairs_enabled: next };
+      await api.saveSettings(payload);
+      setSettings(payload);
+      toast.success(next ? "NEW PAIRS AUTO-SNIPE ARMED" : "New pairs disarmed");
+      load();
+    } catch (e) {
+      toast.error("Toggle failed");
+    }
+  };
 
   const quickSnipe = async (e, t) => {
     if (e) {
@@ -106,15 +158,17 @@ export default function Dashboard() {
         image: t.image,
         price_usd: t.price_usd || 0.000001,
         market_cap: t.market_cap,
-        amount_sol: 0.5,
+        amount_sol: 0.1,
       });
-      toast.success(`Sniped 0.5 SOL of $${t.symbol}`, {
+      toast.success(`Sniped 0.1 SOL of $${t.symbol}`, {
         description: "Position opened",
       });
     } catch (e) {
       toast.error("Snipe failed");
     }
   };
+
+  const isSnipeOn = npEngine?.new_pairs_enabled;
 
   return (
     <div className="px-4 py-4">
@@ -134,19 +188,19 @@ export default function Dashboard() {
 
           <div className="flex items-center gap-1 font-mono text-[10px] uppercase">
             <Filter className="w-3 h-3 text-[#5C5C6E] mr-1" />
-            <span className="text-[#5C5C6E] mr-2">RISK</span>
-            {RISK_FILTERS.map((r) => (
+            <span className="text-[#5C5C6E] mr-2">AGE</span>
+            {AGE_FILTERS.map((a) => (
               <button
-                key={r.key || "all"}
-                data-testid={`risk-filter-${r.key || "all"}`}
-                onClick={() => setRiskFilter(r.key)}
+                key={a.key}
+                data-testid={`age-filter-${a.key}`}
+                onClick={() => setAgeFilter(a.key)}
                 className={`px-2 py-1 border ${
-                  riskFilter === r.key
+                  ageFilter === a.key
                     ? "border-neon-green text-neon-green"
                     : "border-[#1A1A24] text-[#8A8A9E] hover:text-white"
                 }`}
               >
-                {r.label}
+                {a.label}
               </button>
             ))}
           </div>
@@ -171,6 +225,29 @@ export default function Dashboard() {
           </div>
 
           <button
+            onClick={toggleNewPairs}
+            data-testid="new-pairs-auto-toggle"
+            className={`flex items-center gap-1.5 px-3 py-2 border font-mono text-[10px] uppercase tracking-widest transition-colors ${
+              isSnipeOn
+                ? "border-neon-green text-neon-green bg-neon-green/10 glow-green"
+                : "border-[#1A1A24] text-[#8A8A9E] hover:border-neon-green hover:text-neon-green"
+            }`}
+          >
+            <Power className={`w-3 h-3 ${isSnipeOn ? "animate-pulse-dot" : ""}`} />
+            AUTO-SNIPE NEW PAIRS {isSnipeOn ? "ARMED" : "OFF"}
+          </button>
+
+          {error && (
+            <button
+              onClick={load}
+              data-testid="new-pairs-reconnect"
+              className="flex items-center gap-1.5 px-2.5 py-1 border border-neon-red text-neon-red font-mono text-[10px] uppercase tracking-widest hover:bg-neon-red hover:text-black"
+            >
+              RECONNECT
+            </button>
+          )}
+
+          <button
             onClick={load}
             data-testid="refresh-feed-button"
             className="ml-auto flex items-center gap-1.5 px-2.5 py-1 border border-[#1A1A24] hover:border-neon-cyan font-mono text-[10px] uppercase text-[#8A8A9E] hover:text-neon-cyan"
@@ -179,32 +256,15 @@ export default function Dashboard() {
           </button>
         </div>
         <div className="flex flex-wrap items-center gap-4 px-3 py-2 font-mono text-[10px] uppercase tracking-widest">
-          <label className="flex items-center gap-2 text-[#5C5C6E]">
-            MIN LIQ
-            <input
-              data-testid="min-liq-input"
-              type="number"
-              value={minLiq}
-              onChange={(e) => setMinLiq(Number(e.target.value || 0))}
-              className="w-24 bg-black border border-[#1A1A24] px-2 py-0.5 text-white"
-            />
-          </label>
-          <label className="flex items-center gap-2 text-[#5C5C6E]">
-            MIN SCORE
-            <input
-              data-testid="min-score-input"
-              type="number"
-              value={minScore}
-              max={100}
-              min={0}
-              onChange={(e) => setMinScore(Number(e.target.value || 0))}
-              className="w-16 bg-black border border-[#1A1A24] px-2 py-0.5 text-white"
-            />
-          </label>
           <span className="text-[#5C5C6E]">
             <span className="text-neon-green">{filtered.length}</span> RESULTS · LAST{" "}
             {Math.floor((Date.now() - lastRefresh) / 1000)}s
           </span>
+          <span className="text-[#5C5C6E]">
+            <span className="text-neon-cyan">{scanStats.scanned}</span> TOKENS SCANNED /{" "}
+            <span className="text-neon-red">{scanStats.filtered}</span> FILTERED
+          </span>
+          {error && <span className="text-neon-red">{error}</span>}
         </div>
       </div>
 
@@ -217,12 +277,9 @@ export default function Dashboard() {
               <th className="text-left px-2">Token</th>
               <th className="text-right px-2">Age</th>
               <th className="text-right px-2">Price</th>
-              <th className="text-right px-2">5m</th>
-              <th className="text-right px-2">1h</th>
-              <th className="text-right px-2">24h</th>
               <th className="text-right px-2">MC</th>
               <th className="text-right px-2">Liq</th>
-              <th className="text-right px-2">Vol 24h</th>
+              <th className="text-right px-2">Vol 5m</th>
               <th className="text-right px-2">Buys/Sells</th>
               <th className="text-center px-2">Risk</th>
               <th className="text-center px-2">Score</th>
@@ -232,14 +289,14 @@ export default function Dashboard() {
           <tbody>
             {loading && tokens.length === 0 && (
               <tr>
-                <td colSpan={14} className="text-center py-12 text-[#5C5C6E] uppercase">
+                <td colSpan={11} className="text-center py-12 text-[#5C5C6E] uppercase">
                   Booting stream…
                 </td>
               </tr>
             )}
             {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={14} className="text-center py-12 text-[#5C5C6E] uppercase">
+                <td colSpan={11} className="text-center py-12 text-[#5C5C6E] uppercase">
                   No tokens match the current filters
                 </td>
               </tr>
@@ -289,23 +346,13 @@ export default function Dashboard() {
                 </td>
                 <td className="px-2 text-right text-[#8A8A9E]">{fmtAge(t.age_minutes)}</td>
                 <td className="px-2 text-right text-white">{fmtUsd(t.price_usd)}</td>
-                {[t.price_change_5m, t.price_change_1h, t.price_change_24h].map((c, k) => (
-                  <td
-                    key={k}
-                    className={`px-2 text-right ${
-                      (c || 0) >= 0 ? "text-neon-green" : "text-neon-red"
-                    }`}
-                  >
-                    {fmtPct(c)}
-                  </td>
-                ))}
                 <td className="px-2 text-right text-white">{fmtUsd(t.market_cap)}</td>
                 <td className="px-2 text-right text-[#8A8A9E]">{fmtUsd(t.liquidity_usd)}</td>
-                <td className="px-2 text-right text-[#8A8A9E]">{fmtUsd(t.volume_24h)}</td>
+                <td className="px-2 text-right text-[#8A8A9E]">{fmtUsd(t.volume_5m)}</td>
                 <td className="px-2 text-right text-[10px]">
-                  <span className="text-neon-green">{t.txns_24h_buys || 0}</span>
+                  <span className="text-neon-green">{t.txns_5m_buys || 0}</span>
                   <span className="text-[#5C5C6E]"> / </span>
-                  <span className="text-neon-red">{t.txns_24h_sells || 0}</span>
+                  <span className="text-neon-red">{t.txns_5m_sells || 0}</span>
                 </td>
                 <td className="px-2 text-center">
                   <RiskBadge risk={t.risk} />

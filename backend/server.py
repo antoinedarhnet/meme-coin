@@ -19,6 +19,9 @@ import random
 import math
 import secrets
 import base58
+from services.new_pairs.ingestion import NewPairsIngestor
+from services.new_pairs.filters import fetch_rugcheck_report, run_all_filters
+from services.new_pairs.scoring import compute_new_pairs_score
 try:
     import nacl.signing
     import nacl.exceptions
@@ -38,12 +41,30 @@ api_router = APIRouter(prefix="/api")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("sniping")
+logger_new_pairs = logging.getLogger("sniping.new_pairs")
 
 DEXSCREENER_BASE = "https://api.dexscreener.com"
+HELIUS_WEBHOOKS_BASE = "https://api-mainnet.helius-rpc.com/v0/webhooks"
+PUMPFUN_PROGRAM_ID = os.environ.get("PUMPFUN_PROGRAM_ID", "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P")
+RAYDIUM_PROGRAM_IDS = os.environ.get(
+    "RAYDIUM_PROGRAM_IDS",
+    "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8,CPMMoo8L3F4NbTegBCKVN5Tq1Jp4vN1DwsVdX2bQ9M9",
+).split(",")
 
 # ---------- In-process cache ----------
 _cache: Dict[str, Any] = {"pairs": {"data": [], "ts": 0}}
 CACHE_TTL = 20  # seconds
+
+# ---------- New Pairs ingestion ----------
+_new_pairs_ingestor = NewPairsIngestor()
+_new_pairs_stats: Dict[str, Any] = {
+    "scanned": 0,
+    "filtered": 0,
+    "filtered_reasons": {},
+    "passed_scoring": 0,
+    "last_activity_at": None,
+}
+_new_pairs_rejections: List[Dict[str, Any]] = []
 
 
 # ---------- Models ----------
@@ -204,6 +225,17 @@ class Settings(BaseModel):
     max_open_positions: int = 10
     daily_loss_limit_pct: float = 10.0  # -10% => auto-snipe OFF
     daily_profit_lock_pct: float = 30.0
+    # ---------- New Pairs config ----------
+    new_pairs_enabled: bool = False
+    new_pairs_min_score: int = 80
+    new_pairs_buy_size_sol: float = 0.1
+    new_pairs_stop_loss_pct: float = 25.0
+    new_pairs_max_simultaneous: int = 3
+    # Sources toggles
+    new_pairs_source_pumpfun: bool = True
+    new_pairs_source_raydium: bool = True
+    new_pairs_source_dexscreener: bool = True
+    new_pairs_source_birdeye: bool = False
 
 
 class Bankroll(BaseModel):
@@ -1171,7 +1203,7 @@ async def wallet_nonce(req: WalletNonceRequest):
     message = (
         f"snipr.sol wants you to sign in with your Solana account:\n"
         f"{req.wallet_address}\n\n"
-        f"Welcome to SNIPR.SOL terminal. Sign this one-time message to authenticate.\n\n"
+        f"Welcome to SNIPER.SOL terminal. Sign this one-time message to authenticate.\n\n"
         f"Nonce: {nonce}\n"
         f"Issued At: {now}"
     )
@@ -1207,14 +1239,251 @@ async def wallet_verify(req: WalletVerifyRequest):
     return {"ok": True, "wallet_address": req.wallet_address}
 
 
+# ---------- Webhooks ----------
+@app.post("/webhooks/helius")
+@api_router.post("/webhooks/helius")
+@api_router.post("/webhooks/helius/pumpfun")
+async def helius_webhook(payload: Dict[str, Any]):
+    """
+    Helius webhook entrypoint (Pump.fun + Raydium signals).
+    We buffer the mint address for later enrichment.
+    """
+    try:
+        _new_pairs_ingestor.ingest_pumpfun_webhook(payload)
+        _new_pairs_stats["last_activity_at"] = datetime.now(timezone.utc).isoformat()
+        _new_pairs_stats.update(_new_pairs_ingestor.get_stats())
+        logger_new_pairs.info("Helius webhook received.")
+    except Exception as e:
+        logger.warning(f"helius webhook ingest failed: {e}")
+    return {"ok": True}
+
+
+async def register_helius_webhook():
+    api_key = os.environ.get("HELIUS_API_KEY")
+    backend_url = os.environ.get("BACKEND_URL")
+    if not api_key:
+        logger_new_pairs.info("Helius webhook registration skipped (HELIUS_API_KEY missing).")
+        return
+    if not backend_url:
+        logger_new_pairs.warning("Helius webhook registration skipped (BACKEND_URL missing).")
+        return
+
+    webhook_url = backend_url.rstrip("/") + "/webhooks/helius"
+    payload = {
+        "webhookURL": webhook_url,
+        "webhookType": "enhanced",
+        "transactionTypes": ["ANY"],
+        "accountAddresses": [PUMPFUN_PROGRAM_ID] + [p for p in RAYDIUM_PROGRAM_IDS if p],
+        "txnStatus": "success",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as h:
+            list_url = f"{HELIUS_WEBHOOKS_BASE}?api-key={api_key}"
+            existing = await h.get(list_url)
+            existing.raise_for_status()
+            data = existing.json()
+            items = data if isinstance(data, list) else []
+            matched = next((w for w in items if w.get("webhookURL") == webhook_url), None)
+            if matched:
+                webhook_id = matched.get("webhookID") or matched.get("id")
+                if webhook_id:
+                    update_url = f"{HELIUS_WEBHOOKS_BASE}/{webhook_id}?api-key={api_key}"
+                    r = await h.put(update_url, json=payload)
+                    r.raise_for_status()
+                    logger_new_pairs.info(f"Helius webhook updated: {webhook_id}")
+                    return
+            # Create new webhook
+            create_url = f"{HELIUS_WEBHOOKS_BASE}?api-key={api_key}"
+            r = await h.post(create_url, json=payload)
+            r.raise_for_status()
+            logger_new_pairs.info("Helius webhook registered.")
+    except Exception as e:
+        logger_new_pairs.error(f"Helius webhook registration failed: {e}")
+
+
 # ---------- New Pairs (fresh launches) ----------
 @api_router.get("/tokens/new-pairs")
-async def new_pairs(max_age_min: int = Query(240), min_liq: float = Query(500), limit: int = Query(40)):
-    pairs = await fetch_solana_pairs()
-    tokens = [pair_to_token(p) for p in pairs if (p.get("baseToken") or {}).get("address")]
-    fresh = [t for t in tokens if (t.age_minutes is not None and t.age_minutes <= max_age_min and (t.liquidity_usd or 0) >= min_liq)]
-    fresh.sort(key=lambda t: t.age_minutes or 99999)
-    return {"tokens": [t.model_dump() for t in fresh[:limit]], "count": len(fresh)}
+async def new_pairs(max_age_min: int = Query(60), limit: int = Query(40)):
+    logger_new_pairs.info(f"[NEW-PAIRS] === Endpoint called: max_age_min={max_age_min}, limit={limit} ===")
+    
+    settings = await db.settings.find_one({"_id": "global"}) or {}
+    sources = {
+        "pumpfun": settings.get("new_pairs_source_pumpfun", True),
+        "raydium": settings.get("new_pairs_source_raydium", True),
+        "dexscreener": settings.get("new_pairs_source_dexscreener", True),
+        "birdeye": settings.get("new_pairs_source_birdeye", False),
+    }
+    logger_new_pairs.info(f"[NEW-PAIRS] Sources enabled: {sources}")
+    
+    candidates = await _new_pairs_ingestor.fetch_all(sources)
+    ingest_stats = _new_pairs_ingestor.get_stats()
+    logger_new_pairs.info(f"[NEW-PAIRS] Buffer state: {ingest_stats}")
+    logger_new_pairs.info(f"[NEW-PAIRS] Got {len(candidates)} candidates from fetch_all")
+
+    stats_lock = asyncio.Lock()
+    stats = {
+        "scanned": len(candidates),
+        "filtered": 0,
+        "filtered_reasons": {},
+        "passed_scoring": 0,
+        "last_activity_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    async def reject(reason: str, extra: Optional[Dict[str, Any]] = None, mint: Optional[str] = None):
+        async with stats_lock:
+            stats["filtered"] += 1
+            stats["filtered_reasons"][reason] = stats["filtered_reasons"].get(reason, 0) + 1
+        rej = {
+            "mint": mint,
+            "reason": reason,
+            "ts": datetime.now(timezone.utc).isoformat(),
+        }
+        if extra:
+            rej.update(extra)
+        _new_pairs_rejections.insert(0, rej)
+        del _new_pairs_rejections[100:]
+        logger_new_pairs.debug(f"[NEW-PAIRS] Rejected {mint}: {reason}")
+
+    async def mark_scored():
+        async with stats_lock:
+            stats["passed_scoring"] += 1
+
+    sem = asyncio.Semaphore(8)
+
+    async def enrich_candidate(c):
+        if not c.token_address:
+            await reject("missing_address")
+            return None
+        
+        logger_new_pairs.debug(f"[NEW-PAIRS] Enriching {c.token_address} from {c.source}")
+        
+        # Enrich missing market fields via DexScreener if needed
+        if c.liquidity_usd is None or c.volume_5m is None or c.price_usd is None:
+            try:
+                data = await http_get(f"{DEXSCREENER_BASE}/tokens/v1/solana/{c.token_address}")
+                if isinstance(data, list) and data:
+                    pair = max(data, key=lambda p: (p.get("liquidity") or {}).get("usd") or 0)
+                    base = pair.get("baseToken") or {}
+                    tx5 = (pair.get("txns") or {}).get("m5") or {}
+                    c.pair_address = c.pair_address or pair.get("pairAddress")
+                    c.symbol = c.symbol or base.get("symbol")
+                    c.name = c.name or base.get("name")
+                    c.created_at_ms = c.created_at_ms or pair.get("pairCreatedAt")
+                    c.dex = c.dex or pair.get("dexId")
+                    c.price_usd = c.price_usd or (float(pair["priceUsd"]) if pair.get("priceUsd") else None)
+                    c.liquidity_usd = c.liquidity_usd or (pair.get("liquidity") or {}).get("usd")
+                    c.volume_5m = c.volume_5m or (pair.get("volume") or {}).get("m5")
+                    c.buys_5m = c.buys_5m or tx5.get("buys")
+                    c.sells_5m = c.sells_5m or tx5.get("sells")
+                    c.raw = pair
+                    logger_new_pairs.debug(f"[NEW-PAIRS] Enriched {c.symbol}: liq={c.liquidity_usd}, price={c.price_usd}")
+            except Exception as e:
+                logger_new_pairs.warning(f"[NEW-PAIRS] Enrichment failed for {c.token_address}: {e}")
+                pass
+
+        # Age gate
+        if c.age_minutes is None or c.age_minutes > max_age_min:
+            await reject("age_filter", {"age_min": c.age_minutes}, c.token_address)
+            return None
+
+        logger_new_pairs.debug(f"[NEW-PAIRS] {c.symbol} passed age filter: {c.age_minutes:.1f}min")
+
+        # Build metrics for filters
+        liq_usd = c.liquidity_usd or 0
+        vol5_usd = c.volume_5m or 0
+        buys = c.buys_5m or 0
+        sells = c.sells_5m or 0
+        metrics = {
+            "liquidity_sol": liq_usd / SOL_PRICE_USD if SOL_PRICE_USD else None,
+            "volume_5m_sol": vol5_usd / SOL_PRICE_USD if SOL_PRICE_USD else None,
+            "txns_5m": buys + sells,
+            "buy_sell_ratio": (buys / sells) if sells else (buys or 0),
+        }
+        logger_new_pairs.debug(f"[NEW-PAIRS] Metrics for {c.symbol}: {metrics}")
+
+        # RugCheck report (limited concurrency)
+        try:
+            async with sem:
+                report = await fetch_rugcheck_report(c.token_address)
+        except Exception as e:
+            logger_new_pairs.warning(f"[NEW-PAIRS] RugCheck failed for {c.symbol}: {e}")
+            await reject("rugcheck_fetch_failed", None, c.token_address)
+            return None
+
+        # Apply hard filters
+        passed = run_all_filters(report, metrics)
+        if passed.details and passed.details.get("failed"):
+            logger_new_pairs.debug(f"[NEW-PAIRS] {c.symbol} debug warnings: {passed.details.get('failed')}")
+            await reject("debug_warn_filters", {"failed": passed.details.get("failed")}, c.token_address)
+        if not passed.ok:
+            await reject(passed.reason or "filtered", {"failed": passed.details.get("failed")}, c.token_address)
+            return None
+
+        logger_new_pairs.info(f"[NEW-PAIRS] {c.symbol} passed filters!")
+
+        # Score (proxy until richer metrics arrive)
+        top10_pct = report.get("topHoldersPct")
+        holders_diversity = 0
+        if top10_pct is not None:
+            holders_diversity = max(0.0, 1 - (top10_pct / 100.0))
+        score_metrics = {
+            "buy_velocity": (buys / 5) if buys else 0,  # tx/min proxy
+            "holders_diversity": holders_diversity,
+            "vol_liq_ratio": (vol5_usd / liq_usd) if liq_usd else 0,
+            "bonding_curve_progress": 0,
+            "smart_money_hits": 0,
+            "social_buzz": 0,
+        }
+        score = compute_new_pairs_score(score_metrics)
+        logger_new_pairs.debug(f"[NEW-PAIRS] {c.symbol} score={score.score}")
+        
+        if score.score < 60:
+            await reject("score_below_min", {"score": score.score}, c.token_address)
+            return None
+        await mark_scored()
+
+        return {
+            "chain": "solana",
+            "address": c.token_address,
+            "pair_address": c.pair_address,
+            "name": c.name or "Unknown",
+            "symbol": c.symbol or "?",
+            "image": (c.raw.get("info") or {}).get("imageUrl") if isinstance(c.raw, dict) else None,
+            "age_minutes": c.age_minutes,
+            "market_cap": (c.raw.get("marketCap") if isinstance(c.raw, dict) else None),
+            "liquidity_usd": c.liquidity_usd,
+            "price_usd": c.price_usd,
+            "volume_5m": c.volume_5m,
+            "txns_5m_buys": c.buys_5m,
+            "txns_5m_sells": c.sells_5m,
+            "risk": "safe",
+            "score": score.score,
+            "score_breakdown": score.breakdown,
+        }
+
+    results = await asyncio.gather(*[enrich_candidate(c) for c in candidates], return_exceptions=True)
+    tokens = [r for r in results if isinstance(r, dict)]
+    tokens.sort(key=lambda t: t.get("score") or 0, reverse=True)
+
+    # Update global stats snapshot
+    _new_pairs_stats.update(stats)
+
+    # Merge ingest stats
+    ingest_stats = _new_pairs_ingestor.get_stats()
+    _new_pairs_stats.update(ingest_stats)
+
+    logger_new_pairs.info(
+        f"[NEW-PAIRS] FINAL: scanned={stats['scanned']} filtered={stats['filtered']} "
+        f"scored={stats['passed_scoring']} returned={len(tokens)} | Reasons: {stats['filtered_reasons']}"
+    )
+
+    meta = {
+        "scanned": stats["scanned"],
+        "filtered": stats["filtered"],
+        "passed_scoring": stats["passed_scoring"],
+        "filtered_reasons": stats["filtered_reasons"],
+    }
+    return {"tokens": tokens[:limit], "count": len(tokens), "meta": meta}
 
 
 # ---------- Whale Tracker ----------
@@ -1341,6 +1610,82 @@ async def engine_status():
     }
 
 
+@api_router.get("/engine/new-pairs/status")
+async def new_pairs_engine_status():
+    settings = await db.settings.find_one({"_id": "global"}) or {}
+    ingest_stats = _new_pairs_ingestor.get_stats()
+    stats = {**_new_pairs_stats, **ingest_stats}
+    if not stats.get("last_activity_at"):
+        last_ms = max(
+            stats.get("last_webhook_ms") or 0,
+            stats.get("last_fallback_poll_ms") or 0,
+        )
+        if last_ms:
+            stats["last_activity_at"] = datetime.fromtimestamp(last_ms / 1000, tz=timezone.utc).isoformat()
+    return {
+        "new_pairs_enabled": settings.get("new_pairs_enabled", False),
+        "last_snipe_run": _new_pairs_engine_state.get("last_snipe_run", 0),
+        "events": _new_pairs_engine_state.get("events", [])[:30],
+        "webhook_received": stats.get("webhook_received", 0),
+        "webhook_buffer_size": stats.get("webhook_buffer_size", 0),
+        "last_webhook_ms": stats.get("last_webhook_ms"),
+        "fallback_received": stats.get("fallback_received", 0),
+        "fallback_buffer_size": stats.get("fallback_buffer_size", 0),
+        "last_fallback_poll_ms": stats.get("last_fallback_poll_ms"),
+        "scanned": stats.get("scanned", 0),
+        "filtered": stats.get("filtered", 0),
+        "filtered_reasons": stats.get("filtered_reasons", {}),
+        "passed_scoring": stats.get("passed_scoring", 0),
+        "last_activity_at": stats.get("last_activity_at"),
+    }
+
+
+@api_router.get("/debug/new-pairs")
+async def debug_new_pairs():
+    """
+    Comprehensive debug endpoint for new-pairs pipeline.
+    Returns buffer state, rejection reasons, and raw samples.
+    """
+    from datetime import datetime, timezone
+    stats = _new_pairs_ingestor.get_stats()
+    latest_rejections = _new_pairs_rejections[:50]
+    
+    # Group rejections by reason
+    rejection_summary = {}
+    for rej in _new_pairs_rejections:
+        reason = rej.get("reason", "unknown")
+        rejection_summary[reason] = rejection_summary.get(reason, 0) + 1
+    
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "buffer": {
+            "size": stats.get("buffer_size", 0),
+            "sample": _new_pairs_ingestor.get_buffer_sample(10),
+        },
+        "webhook": {
+            "received_count": stats.get("webhook_received", 0),
+            "last_received_ms": stats.get("last_webhook_ms"),
+            "last_received_ago_sec": (now_ms - (stats.get("last_webhook_ms") or 0)) / 1000 if stats.get("last_webhook_ms") else None,
+        },
+        "fallback_dexscreener": {
+            "last_poll_ms": stats.get("last_fallback_poll_ms"),
+            "last_poll_ago_sec": (now_ms - (stats.get("last_fallback_poll_ms") or 0)) / 1000 if stats.get("last_fallback_poll_ms") else None,
+            "last_response_count": stats.get("fallback_last_response_count", 0),
+            "after_age_filter": stats.get("fallback_last_after_age", 0),
+            "pushed_to_buffer": stats.get("fallback_last_pushed", 0),
+            "total_received": stats.get("fallback_received", 0),
+        },
+        "rejections": {
+            "total_count": len(_new_pairs_rejections),
+            "summary_by_reason": rejection_summary,
+            "latest_50": latest_rejections,
+        },
+        "last_activity_at": _new_pairs_stats.get("last_activity_at"),
+    }
+
+
 app.include_router(api_router)
 
 app.add_middleware(
@@ -1354,6 +1699,7 @@ app.add_middleware(
 
 # ---------- Auto-Engine Background Tasks ----------
 _engine_state: Dict[str, Any] = {"last_snipe_run": 0, "last_monitor_run": 0, "events": []}
+_new_pairs_engine_state: Dict[str, Any] = {"last_snipe_run": 0, "events": []}
 
 
 def push_event(kind: str, text: str, extra: Optional[Dict] = None):
@@ -1459,6 +1805,99 @@ async def auto_snipe_loop():
         except Exception as e:
             logger.error(f"auto_snipe_loop error: {e}")
         await asyncio.sleep(30)
+
+
+async def auto_snipe_new_pairs_loop():
+    """Poll new pairs every 20s; snipe any that match the new-pairs config."""
+    await asyncio.sleep(10)
+    while True:
+        try:
+            settings = await db.settings.find_one({"_id": "global"}) or {}
+            if not settings.get("new_pairs_enabled", False):
+                await asyncio.sleep(20)
+                continue
+
+            amount = float(settings.get("new_pairs_buy_size_sol", 0.1))
+            min_score = int(settings.get("new_pairs_min_score", 80))
+            max_simul = int(settings.get("new_pairs_max_simultaneous", 3))
+
+            # Only count new-pairs auto positions
+            open_np = await db.positions.count_documents({"status": "open", "source": "new_pairs_auto"})
+            if open_np >= max_simul:
+                await asyncio.sleep(20)
+                continue
+
+            # Get candidates from new-pairs endpoint
+            payload = await new_pairs(max_age_min=60, limit=60)
+            candidates = payload.get("tokens") or []
+            meta = payload.get("meta") or {}
+            logger_new_pairs.info(
+                f"[NEW-PAIRS LOOP] scanned={meta.get('scanned', 0)} filtered={meta.get('filtered', 0)} scored={meta.get('passed_scoring', 0)}"
+            )
+            candidates = [t for t in candidates if (t.get("score") or 0) >= min_score]
+            candidates.sort(key=lambda t: t.get("score") or 0, reverse=True)
+
+            for t in candidates[:3]:
+                # don't snipe tokens we already hold
+                existing = await db.positions.find_one({"token_address": t.get("address"), "status": "open"})
+                if existing:
+                    continue
+                # don't exceed max simultaneous
+                open_np = await db.positions.count_documents({"status": "open", "source": "new_pairs_auto"})
+                if open_np >= max_simul:
+                    break
+                try:
+                    req = TradeRequest(
+                        token_address=t.get("address"),
+                        symbol=t.get("symbol"),
+                        name=t.get("name"),
+                        image=t.get("image"),
+                        price_usd=t.get("price_usd") or 0.000001,
+                        market_cap=t.get("market_cap"),
+                        amount_sol=amount,
+                        source="new_pairs_auto",
+                    )
+                    err = await check_risk_limits(amount)
+                    if err:
+                        break
+                    usd = amount * SOL_PRICE_USD
+                    tokens_qty = usd / req.price_usd if req.price_usd else 0
+                    pos = Position(
+                        token_address=req.token_address,
+                        symbol=req.symbol,
+                        name=req.name,
+                        image=req.image,
+                        entry_price=req.price_usd,
+                        amount_sol=amount,
+                        tokens=tokens_qty,
+                        tokens_remaining=tokens_qty,
+                        ath_price=req.price_usd,
+                        entry_market_cap=req.market_cap,
+                        source="new_pairs_auto",
+                    )
+                    await db.positions.insert_one(pos.model_dump())
+                    await bankroll_adjust(-amount)
+                    _new_pairs_engine_state["events"].insert(
+                        0,
+                        {
+                            "id": str(uuid.uuid4()),
+                            "kind": "new_pairs_auto_snipe",
+                            "text": f"AUTO-SNIPE ${req.symbol} @ {req.price_usd:.8f}",
+                            "ts": datetime.now(timezone.utc).isoformat(),
+                            "extra": {"token_address": req.token_address, "symbol": req.symbol, "score": t.get("score")},
+                        },
+                    )
+                    _new_pairs_engine_state["events"] = _new_pairs_engine_state["events"][:100]
+                    logger_new_pairs.info(f"[NEW-PAIRS AUTO] ${req.symbol} {amount} SOL @ {req.price_usd}")
+                    # one snipe per cycle
+                    break
+                except Exception as e:
+                    logger_new_pairs.warning(f"new-pairs auto-snipe failed on {t.get('symbol')}: {e}")
+
+            _new_pairs_engine_state["last_snipe_run"] = datetime.now(timezone.utc).timestamp()
+        except Exception as e:
+            logger_new_pairs.error(f"auto_snipe_new_pairs_loop error: {e}")
+        await asyncio.sleep(20)
 
 
 async def get_live_prices(addresses: List[str]) -> Dict[str, float]:
@@ -1609,11 +2048,18 @@ _bg_tasks: List[asyncio.Task] = []
 async def start_engines():
     _bg_tasks.append(asyncio.create_task(auto_snipe_loop()))
     _bg_tasks.append(asyncio.create_task(auto_sell_loop()))
-    logger.info("Auto-engines started (snipe + sell).")
+    _bg_tasks.append(asyncio.create_task(auto_snipe_new_pairs_loop()))
+    _bg_tasks.append(asyncio.create_task(_new_pairs_ingestor.fallback_poll_loop()))
+    _bg_tasks.append(asyncio.create_task(register_helius_webhook()))
+    logger.info("Auto-engines started (snipe + sell + new-pairs + fallback).")
 
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
     for t in _bg_tasks:
         t.cancel()
+    try:
+        await _new_pairs_ingestor.close()
+    except Exception:
+        pass
     client.close()

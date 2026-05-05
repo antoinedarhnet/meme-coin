@@ -7,6 +7,7 @@ const http = axios.create({ baseURL: API, timeout: 30000 });
 
 export const api = {
   liveTokens: (params = {}) => http.get("/tokens/live", { params }).then((r) => r.data),
+  newPairs: (params = {}, config = {}) => http.get("/tokens/new-pairs", { params, ...config }).then((r) => r.data),
   tokenDetail: (addr) => http.get(`/tokens/${addr}`).then((r) => r.data),
   ticker: () => http.get("/ticker").then((r) => r.data),
   kols: () => http.get("/kols").then((r) => r.data),
@@ -26,6 +27,7 @@ export const api = {
   setBankroll: (payload) => http.put("/bankroll", payload).then((r) => r.data),
   resetBankroll: () => http.post("/bankroll/reset").then((r) => r.data),
   engine: () => http.get("/engine/status").then((r) => r.data),
+  newPairsEngine: () => http.get("/engine/new-pairs/status").then((r) => r.data),
   alerts: () => http.get("/alerts").then((r) => r.data),
   addAlert: (payload) => http.post("/alerts", payload).then((r) => r.data),
   removeAlert: (id) => http.delete(`/alerts/${id}`).then((r) => r.data),
